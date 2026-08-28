@@ -85,9 +85,11 @@ import {
   Zap
 } from 'lucide-react';
 
-const API_BASE = window.location.port === '5173'
-  ? `http://${window.location.hostname}:3001`
-  : window.location.origin;
+const API_BASE = import.meta.env.VITE_API_URL || (
+  window.location.port === '5173'
+    ? `http://${window.location.hostname}:3001`
+    : window.location.origin
+);
 
 // Synthesize Discord UI sound effects using Web Audio API
 function playDiscordSound(type) {
