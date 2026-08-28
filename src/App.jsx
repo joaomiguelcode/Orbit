@@ -83,7 +83,14 @@ import {
   CheckSquare,
   Square,
   Zap,
-  GraduationCap
+  GraduationCap,
+  ChevronRight,
+  Info,
+  Clock,
+  User,
+  PenLine,
+  Eye,
+  Share2
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || (
@@ -399,11 +406,7 @@ function DiscordVoiceParticipantCard({
 
 // =========================================================================
 // 1. DISCORD USER PROFILE MODAL / POPOVER
-// ========================================================================// =========================================================================
-// 1. DISCORD USER PROFILE MODAL / POPOVER (Rich Profiles & Decorations)
-// =========================================================================
-// =========================================================================
-// 1. DISCORD USER PROFILE MODAL / POPOVER (Authentic Discord Profile Card)
+// 1. DISCORD USER PROFILE MODAL (100% Faithful Discord Profile Card)
 // =========================================================================
 function DiscordUserProfileModal({
   profileData,
@@ -428,6 +431,21 @@ function DiscordUserProfileModal({
   const [profileViewMode, setProfileViewMode] = useState(isServerContext && serverProfile ? 'server' : 'global');
   const [showRoleAssignDropdown, setShowRoleAssignDropdown] = useState(false);
   const [copiedTag, setCopiedTag] = useState(false);
+  const [userNote, setUserNote] = useState(() => {
+    try {
+      return localStorage.getItem(`discord_note_${user.id}`) || '';
+    } catch {
+      return '';
+    }
+  });
+  const [quickDmText, setQuickDmText] = useState('');
+
+  const handleSaveNote = (val) => {
+    setUserNote(val);
+    try {
+      localStorage.setItem(`discord_note_${user.id}`, val);
+    } catch {}
+  };
 
   // Display attributes based on mode
   const effectiveDisplayName = (isServerContext && profileViewMode === 'server' && serverProfile?.nickname) || user.display_name || user.username;
@@ -444,13 +462,23 @@ function DiscordUserProfileModal({
     : null;
 
   const handleCopyTag = () => {
-    const fullTag = `${user.username}${user.tag || ''}`;
+    const fullTag = `@${user.username}`;
     navigator.clipboard.writeText(fullTag);
     setCopiedTag(true);
     setTimeout(() => setCopiedTag(false), 2000);
   };
 
-  const themePrimary = user.theme_primary || user.banner_color || '#DA1E28';
+  const themePrimary = user.theme_primary || user.banner_color || '#5865F2';
+  const themeAccent = user.theme_accent || '#232428';
+
+  const handleQuickSendDm = (e) => {
+    e?.preventDefault();
+    if (!quickDmText.trim()) return;
+    onClose();
+    if (onSendMessage) {
+      onSendMessage(user);
+    }
+  };
 
   return (
     <div
@@ -458,24 +486,39 @@ function DiscordUserProfileModal({
       onClick={onClose}
     >
       <div
-        className="w-[320px] max-w-full bg-[#111214] rounded-[12px] overflow-hidden shadow-2xl border-2 text-[#DBDEE1] relative discord-popin"
+        className="w-[340px] max-w-full bg-[#111214] rounded-[16px] overflow-hidden shadow-2xl border text-[#DBDEE1] relative discord-popin flex flex-col max-h-[90vh]"
         style={{
-          borderColor: `${themePrimary}60`,
-          boxShadow: `0 0 25px ${themePrimary}35`
+          borderColor: `${themePrimary}50`,
+          boxShadow: `0 0 35px ${themePrimary}30`
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-2.5 right-2.5 z-30 p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-[#DBDEE1] hover:text-white transition-colors shadow"
-          title="Fechar Perfil"
-        >
-          <X size={15} />
-        </button>
+        {/* Top Floating Actions over Banner */}
+        <div className="absolute top-3 right-3 z-30 flex items-center gap-1.5">
+          {isSelf && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenEditProfile();
+              }}
+              className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-[#DBDEE1] hover:text-white transition-colors shadow flex items-center gap-1 text-[11px] font-bold px-2.5"
+              title="Editar Perfil"
+            >
+              <PenLine size={13} />
+              <span>Editar</span>
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-full bg-black/60 hover:bg-black/80 text-[#DBDEE1] hover:text-white transition-colors shadow"
+            title="Fechar"
+          >
+            <X size={15} />
+          </button>
+        </div>
 
         {/* Profile Banner */}
-        <div className="w-full h-28 relative bg-[#1E1F22] overflow-hidden">
+        <div className="w-full h-32 relative bg-[#1E1F22] overflow-hidden flex-shrink-0">
           {effectiveBanner ? (
             <img
               src={effectiveBanner}
@@ -489,18 +532,18 @@ function DiscordUserProfileModal({
             <div
               className="w-full h-full"
               style={{
-                background: `linear-gradient(135deg, ${themePrimary}, ${user.theme_accent || '#232428'})`
+                background: `linear-gradient(135deg, ${themePrimary}, ${themeAccent})`
               }}
             />
           )}
 
           {/* Toggle between Global and Server Profile if in server */}
           {isServerContext && serverProfile && (
-            <div className="absolute bottom-2 right-2 z-20 flex bg-black/80 p-0.5 rounded-[4px] border border-white/10 text-[9px] font-bold shadow-lg">
+            <div className="absolute bottom-2 right-2 z-20 flex bg-black/80 p-0.5 rounded-[6px] border border-white/10 text-[10px] font-bold shadow-lg">
               <button
                 type="button"
                 onClick={() => setProfileViewMode('server')}
-                className={`px-2 py-0.5 rounded-[3px] transition-all ${
+                className={`px-2.5 py-0.5 rounded-[4px] transition-all ${
                   profileViewMode === 'server'
                     ? 'bg-[#5865F2] text-white shadow-sm font-semibold'
                     : 'text-[#949BA4] hover:text-white'
@@ -511,7 +554,7 @@ function DiscordUserProfileModal({
               <button
                 type="button"
                 onClick={() => setProfileViewMode('global')}
-                className={`px-2 py-0.5 rounded-[3px] transition-all ${
+                className={`px-2.5 py-0.5 rounded-[4px] transition-all ${
                   profileViewMode === 'global'
                     ? 'bg-[#5865F2] text-white shadow-sm font-semibold'
                     : 'text-[#949BA4] hover:text-white'
@@ -523,116 +566,147 @@ function DiscordUserProfileModal({
           )}
         </div>
 
-        {/* Avatar & Custom Status Capsule Row */}
-        <div className="px-3.5 relative flex items-end justify-between -mt-10 pb-2">
-          {/* Avatar with Status & Deco */}
+        {/* Avatar & Badges Header Row */}
+        <div className="px-4 relative flex items-end justify-between -mt-12 pb-2">
+          {/* Avatar with Status & Decoration */}
           <div className="relative">
-            <div className="p-1 rounded-full bg-[#111214] shadow-lg">
+            <div className="p-1.5 rounded-full bg-[#111214] shadow-xl">
               <DiscordUserAvatar
                 user={{ ...user, avatar_url: effectiveAvatar, avatar_decoration: user.avatar_decoration }}
-                size={76}
+                size={80}
                 showStatus={true}
               />
             </div>
           </div>
 
-          {/* Custom Status Capsule (e.g. 🦜 cfx.Re) */}
-          {user.custom_status ? (
-            <div className="bg-[#1E1F22]/90 border border-white/10 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-md max-w-[150px] truncate text-[#DBDEE1] mb-1">
-              <span className="truncate">{user.custom_status}</span>
-            </div>
-          ) : (
-            <div className="bg-[#1E1F22]/90 border border-white/10 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-md text-[#DBDEE1] mb-1">
-              <span>🦜 cfx.Re</span>
-            </div>
-          )}
+          {/* Badges Container */}
+          <div className="flex items-center gap-1 bg-[#1E1F22] px-2 py-1 rounded-[8px] border border-[#2B2D31] shadow-md mb-1">
+            <span className="discord-badge cursor-pointer p-1" title="Desenvolvedor do Orbit">
+              <Sparkles size={14} className="text-[#5865F2]" />
+            </span>
+            <span className="discord-badge cursor-pointer p-1" title="Apoiador Inicial">
+              <Award size={14} className="text-[#F0B232]" />
+            </span>
+            <span className="discord-badge cursor-pointer p-1" title="Nitro Booster">
+              <Zap size={14} className="text-[#EB459E]" />
+            </span>
+            {isServerContext && isTargetOwner && (
+              <span className="discord-badge cursor-pointer p-1" title="Dono do Servidor">
+                <Crown size={14} className="text-[#F0B232] fill-current" />
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Profile Card Body Details */}
-        <div className="bg-[#111214] px-3.5 pb-3.5 space-y-3 max-h-[60vh] overflow-y-auto">
-          {/* Name, Subtitle & DEV Badge */}
+        {/* Inner Card Container (#111214 + #232428) */}
+        <div className="mx-3.5 mb-3.5 p-3.5 bg-[#232428] rounded-[12px] border border-[#1F2023] space-y-3.5 overflow-y-auto max-h-[60vh]">
+          {/* Name & Identity */}
           <div>
-            <h3 className="text-xl font-bold text-[#F2F3F5] leading-tight">
-              {effectiveDisplayName}
+            <h3 className="text-xl font-bold text-[#F2F3F5] leading-tight flex items-center gap-2">
+              <span className="truncate">{effectiveDisplayName}</span>
+              {user.pronouns && (
+                <span className="text-[11px] font-medium text-[#949BA4] bg-[#1E1F22] px-2 py-0.5 rounded-full border border-white/5 font-sans">
+                  {user.pronouns}
+                </span>
+              )}
             </h3>
-            <div className="flex items-center gap-1.5 text-xs text-[#949BA4] font-medium mt-0.5 flex-wrap">
+
+            <div className="flex items-center gap-1.5 text-xs text-[#949BA4] mt-0.5">
               <button
                 type="button"
                 onClick={handleCopyTag}
-                className="font-mono hover:text-white transition-colors"
-                title="Copiar usuário"
+                className="font-medium hover:text-white transition-colors flex items-center gap-1"
+                title="Clique para copiar"
               >
-                {user.username}{user.tag || ''}
+                <span>@{user.username}</span>
+                {copiedTag ? (
+                  <span className="text-[10px] text-[#23A55A] font-bold">Copiado!</span>
+                ) : (
+                  <Copy size={11} className="opacity-60" />
+                )}
               </button>
-              {copiedTag && <span className="text-[10px] text-[#23A55A] font-bold">Copiado!</span>}
-              <span>•</span>
-              <span className="text-[#DBDEE1]">{user.custom_title || 'Developer'}</span>
-              <span className="px-1.5 py-0.5 rounded-[4px] bg-[#00A8FC]/20 border border-[#00A8FC]/40 text-[#00A8FC] text-[10px] font-extrabold flex items-center gap-0.5 tracking-wider">
-                <Sparkles size={9} /> DEV
-              </span>
             </div>
 
-            {/* Badges Strip */}
-            <div className="flex items-center gap-1 mt-1.5">
-              <span className="discord-badge cursor-pointer p-1" title="Desenvolvedor Orbit Br">
-                <Sparkles size={13} className="text-[#5865F2]" />
+            {/* Custom Status Capsule */}
+            {user.custom_status && (
+              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[6px] bg-[#1E1F22] border border-[#1F2023] text-xs text-[#DBDEE1]">
+                <Smile size={13} className="text-[#5865F2]" />
+                <span className="truncate">{user.custom_status}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="w-full h-[1px] bg-[#1E1F22]" />
+
+          {/* About Me (Bio) */}
+          {effectiveBio && (
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] block mb-1.5">
+                Sobre Mim
               </span>
-              <span className="discord-badge cursor-pointer p-1" title="Apoiador Inicial">
-                <Award size={13} className="text-[#F0B232]" />
-              </span>
-              <span className="discord-badge cursor-pointer p-1" title="Nitro Booster">
-                <Zap size={13} className="text-[#EB459E]" />
-              </span>
-              {isServerContext && isTargetOwner && (
-                <span className="discord-badge cursor-pointer p-1" title="Dono do Servidor">
-                  <Crown size={13} className="text-[#F0B232] fill-current" />
-                </span>
+              <p className="text-xs text-[#DBDEE1] leading-relaxed whitespace-pre-wrap">
+                {effectiveBio}
+              </p>
+            </div>
+          )}
+
+          {/* Member Since Section */}
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] block mb-2">
+              Membro Desde
+            </span>
+            <div className="grid grid-cols-1 gap-2 text-xs text-[#DBDEE1]">
+              <div className="flex items-center gap-2.5 p-2 rounded-[6px] bg-[#1E1F22] border border-[#1F2023]">
+                <Calendar size={16} className="text-[#5865F2]" />
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-[#949BA4] uppercase font-bold">Orbit</span>
+                  <span className="font-medium">{memberSince}</span>
+                </div>
+              </div>
+
+              {isServerContext && serverJoinDate && (
+                <div className="flex items-center gap-2.5 p-2 rounded-[6px] bg-[#1E1F22] border border-[#1F2023]">
+                  <Shield size={16} className="text-[#23A55A]" />
+                  <div className="flex flex-col">
+                    <span className="text-[10px] text-[#949BA4] uppercase font-bold">Neste Servidor</span>
+                    <span className="font-medium">{serverJoinDate}</span>
+                  </div>
+                </div>
               )}
             </div>
           </div>
 
-          <div className="w-full h-[1px] bg-[#232428]" />
-
-          {/* Links & Bio */}
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 text-xs text-[#00A8FC] hover:underline cursor-pointer">
-              <MessageSquare size={13} className="text-[#949BA4] flex-shrink-0" />
-              <span className="truncate">https://discord.com/invite/b44u2R9jmH</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-[#00A8FC] hover:underline cursor-pointer">
-              <Globe size={13} className="text-[#949BA4] flex-shrink-0" />
-              <span className="truncate">https://discord.gg/fivecommunity</span>
-            </div>
-            {effectiveBio && (
-              <p className="text-xs text-[#DBDEE1] leading-relaxed whitespace-pre-wrap pt-1">
-                {effectiveBio}
-              </p>
-            )}
-          </div>
-
-          {/* Coleção de Jogos / Atividade */}
-          <div className="p-2.5 rounded-[8px] bg-[#1E1F22] border border-[#2B2D31] flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#949BA4]">
-                Coleção de jogos
-              </span>
-              <span className="text-xs font-semibold text-[#F2F3F5]">
-                {user.custom_activity || 'Grand Theft Auto V'}
-              </span>
-            </div>
-            <div className="w-7 h-7 rounded bg-[#23A55A]/20 flex items-center justify-center text-[#23A55A] font-bold text-xs shadow-inner">
-              <Gamepad2 size={16} />
-            </div>
-          </div>
-
-          {/* Cargos Section (Only inside server context!) */}
-          {isServerContext && profileViewMode === 'server' && (
+          {/* Activity Card */}
+          {user.custom_activity && (
             <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] block mb-1.5">
+                Atividade
+              </span>
+              <div className="p-2.5 rounded-[8px] bg-[#1E1F22] border border-[#1F2023] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-[6px] bg-[#5865F2]/20 flex items-center justify-center text-[#5865F2]">
+                    <Gamepad2 size={18} />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[10px] uppercase font-bold text-[#23A55A]">Jogando</span>
+                    <span className="text-xs font-bold text-[#F2F3F5] truncate">{user.custom_activity}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Roles (In Server Context) */}
+          {isServerContext && (
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] block mb-1.5">
+                Cargos ({assignedRoles.length + (isTargetOwner ? 1 : 0)})
+              </span>
               <div className="flex flex-wrap items-center gap-1.5">
                 {isTargetOwner && (
                   <span className="role-pill text-[#F0B232] bg-[#F0B232]/10 border-[#F0B232]/30 font-semibold text-xs py-0.5 px-2">
                     <Crown size={11} className="fill-current" />
-                    <span>👑 | CEO</span>
+                    <span>Dono</span>
                   </span>
                 )}
 
@@ -668,7 +742,7 @@ function DiscordUserProfileModal({
                   <button
                     type="button"
                     onClick={() => setShowRoleAssignDropdown((p) => !p)}
-                    className="p-1 rounded-[4px] bg-[#2B2D31] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors text-xs font-bold flex items-center justify-center"
+                    className="p-1 rounded-[4px] bg-[#1E1F22] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors text-xs font-bold flex items-center justify-center border border-white/5"
                     title="Adicionar Cargo"
                   >
                     <Plus size={13} />
@@ -711,45 +785,41 @@ function DiscordUserProfileModal({
             </div>
           )}
 
-          {/* Action Button at Bottom */}
-          <div className="pt-1">
-            {isSelf ? (
-              <button
-                onClick={() => {
-                  onClose();
-                  onOpenEditProfile();
-                }}
-                className="w-full py-2 rounded-[6px] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-all hover:brightness-110 active:scale-[0.99]"
-                style={{ backgroundColor: themePrimary }}
-              >
-                <Edit3 size={13} />
-                <span>Editar perfil</span>
-              </button>
-            ) : (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    onClose();
-                    onSendMessage(user);
-                  }}
-                  className="flex-1 py-2 rounded-[6px] bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-colors"
-                >
-                  <MessageSquare size={13} />
-                  <span>Mensagem</span>
-                </button>
-                <button
-                  onClick={() => {
-                    onClose();
-                    onCallUser(user);
-                  }}
-                  className="p-2 rounded-[6px] bg-[#4E5058] hover:bg-[#6D6F78] text-white transition-colors"
-                  title="Iniciar Chamada"
-                >
-                  <Phone size={14} />
-                </button>
-              </div>
-            )}
+          {/* Personal Note */}
+          <div>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] block mb-1">
+              Nota
+            </span>
+            <input
+              type="text"
+              value={userNote}
+              onChange={(e) => handleSaveNote(e.target.value)}
+              placeholder="Clique para adicionar uma nota"
+              className="w-full text-xs bg-[#1E1F22] border border-transparent focus:border-[#5865F2] rounded-[4px] px-2.5 py-1.5 text-[#F2F3F5] outline-none transition-colors placeholder:text-[#949BA4]"
+            />
           </div>
+
+          {/* Action Buttons / Quick Message */}
+          {!isSelf && (
+            <div className="pt-1">
+              <form onSubmit={handleQuickSendDm} className="relative">
+                <input
+                  type="text"
+                  placeholder={`Conversar com @${user.username}...`}
+                  value={quickDmText}
+                  onChange={(e) => setQuickDmText(e.target.value)}
+                  className="w-full h-9 pl-3 pr-16 rounded-[4px] bg-[#1E1F22] border border-[#1F2023] focus:border-[#5865F2] outline-none text-[#F2F3F5] text-xs transition-colors"
+                />
+                <button
+                  type="submit"
+                  disabled={!quickDmText.trim()}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-[3px] bg-[#5865F2] hover:bg-[#4752C4] disabled:opacity-30 text-white text-[11px] font-semibold transition-colors"
+                >
+                  Enviar
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -757,7 +827,7 @@ function DiscordUserProfileModal({
 }
 
 // =========================================================================
-// 1.1 DISCORD USER DOCK POPOUT (Bottom-Left Drawer Menu - Screenshot 3)
+// 1.1 DISCORD USER DOCK POPOUT (Bottom Left Profile Popout)
 // =========================================================================
 function DiscordUserDockPopout({
   currentUser,
@@ -771,7 +841,8 @@ function DiscordUserDockPopout({
 }) {
   if (!currentUser) return null;
   const [showStatusSubmenu, setShowStatusSubmenu] = useState(false);
-  const themePrimary = currentUser.theme_primary || currentUser.banner_color || '#DA1E28';
+  const themePrimary = currentUser.theme_primary || currentUser.banner_color || '#5865F2';
+  const themeAccent = currentUser.theme_accent || '#232428';
 
   const statuses = [
     { key: 'online', label: 'Disponível', color: '#23A55A', desc: 'Online' },
@@ -784,180 +855,174 @@ function DiscordUserDockPopout({
     <>
       <div className="fixed inset-0 z-[99998]" onClick={onClose} />
       <div
-        className="fixed bottom-14 left-2.5 z-[99999] w-[300px] bg-[#111214] text-[#DBDEE1] rounded-[12px] overflow-hidden shadow-2xl border-2 relative select-none animate-msg-enter"
+        className="fixed bottom-14 left-2.5 z-[99999] w-[310px] bg-[#111214] text-[#DBDEE1] rounded-[16px] overflow-hidden shadow-2xl border relative select-none animate-msg-enter"
         style={{
-          borderColor: `${themePrimary}60`,
-          boxShadow: `0 0 25px ${themePrimary}35`
+          borderColor: `${themePrimary}50`,
+          boxShadow: `0 0 30px ${themePrimary}30`
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Profile Banner */}
-        <div className="w-full h-24 relative bg-[#1E1F22] overflow-hidden">
+        <div className="w-full h-24 relative bg-[#1E1F22] overflow-hidden flex-shrink-0">
           {currentUser.banner_url ? (
             <img src={currentUser.banner_url} alt="Banner" className="w-full h-full object-cover" />
           ) : (
             <div
               className="w-full h-full"
               style={{
-                background: `linear-gradient(135deg, ${themePrimary}, ${currentUser.theme_accent || '#232428'})`
+                background: `linear-gradient(135deg, ${themePrimary}, ${themeAccent})`
               }}
             />
           )}
         </div>
 
-        {/* Avatar & Custom Status */}
-        <div className="px-3 relative flex items-end justify-between -mt-9 pb-1.5">
-          <div className="p-1 rounded-full bg-[#111214] shadow-md">
+        {/* Avatar & Badges Header Row */}
+        <div className="px-3.5 relative flex items-end justify-between -mt-10 pb-1.5">
+          <div className="p-1.5 rounded-full bg-[#111214] shadow-md">
             <DiscordUserAvatar
               user={currentUser}
-              size={68}
+              size={72}
               showStatus={true}
               status={currentUser.status}
             />
           </div>
 
-          <div className="bg-[#1E1F22]/90 border border-white/10 px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shadow-md max-w-[140px] truncate text-[#DBDEE1] mb-1">
-            <span className="truncate">{currentUser.custom_status || '🦜 cfx.Re'}</span>
-          </div>
-        </div>
-
-        {/* User Identity */}
-        <div className="px-3 pb-2.5">
-          <h3 className="text-lg font-bold text-[#F2F3F5] leading-tight">
-            {currentUser.display_name || currentUser.username}
-          </h3>
-          <div className="flex items-center gap-1 text-[11px] text-[#949BA4] font-medium mt-0.5">
-            <span className="font-mono">{currentUser.username}{currentUser.tag || ''}</span>
-            <span>•</span>
-            <span className="text-[#DBDEE1]">Developer</span>
-            <span className="px-1 py-0.2 rounded-[3px] bg-[#00A8FC]/20 border border-[#00A8FC]/40 text-[#00A8FC] text-[9px] font-extrabold flex items-center gap-0.5">
-              <Sparkles size={8} /> DEV
-            </span>
-          </div>
-
-          {/* Badges */}
-          <div className="flex items-center gap-1 mt-1.5">
+          <div className="flex items-center gap-1 bg-[#1E1F22] px-2 py-1 rounded-[6px] border border-[#2B2D31] shadow-sm mb-1">
             <span className="discord-badge cursor-pointer p-0.5" title="Desenvolvedor">
-              <Sparkles size={12} className="text-[#5865F2]" />
+              <Sparkles size={13} className="text-[#5865F2]" />
             </span>
             <span className="discord-badge cursor-pointer p-0.5" title="Apoiador">
-              <Award size={12} className="text-[#F0B232]" />
+              <Award size={13} className="text-[#F0B232]" />
             </span>
             <span className="discord-badge cursor-pointer p-0.5" title="Nitro">
-              <Zap size={12} className="text-[#EB459E]" />
+              <Zap size={13} className="text-[#EB459E]" />
             </span>
           </div>
         </div>
 
-        {/* Voice Connected Card (if active) */}
-        {connectedVoiceChannel && (
-          <div className="mx-2 mb-2 p-2 bg-[#1E1F22] rounded-[6px] border border-[#2B2D31] space-y-1">
-            <div className="flex items-center justify-between text-[10px] font-bold text-[#23A55A] uppercase tracking-wider">
-              <span>Em voz</span>
-              <Info size={11} className="text-[#949BA4]" />
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-full bg-[#23A55A]/20 flex items-center justify-center text-[#23A55A]">
-                <Volume2 size={13} />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-bold text-[#F2F3F5] truncate">Dev working</span>
-                <span className="text-[10px] text-[#949BA4] truncate">em Nocturnal Knights</span>
-              </div>
+        {/* User Identity Container */}
+        <div className="mx-3 mb-3 p-3 bg-[#232428] rounded-[10px] border border-[#1F2023] space-y-2">
+          <div>
+            <h3 className="text-base font-bold text-[#F2F3F5] leading-tight">
+              {currentUser.display_name || currentUser.username}
+            </h3>
+            <div className="flex items-center gap-1.5 text-xs text-[#949BA4] mt-0.5">
+              <span>@{currentUser.username}</span>
+              {currentUser.pronouns && (
+                <span className="text-[10px] bg-[#1E1F22] px-1.5 py-0.2 rounded border border-white/5">
+                  {currentUser.pronouns}
+                </span>
+              )}
             </div>
           </div>
-        )}
 
-        <div className="h-[1px] bg-[#232428]" />
-
-        {/* Menu Options List */}
-        <div className="p-1.5 space-y-0.5 text-xs">
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              onOpenEditProfile();
-            }}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[4px] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Edit3 size={14} className="text-[#949BA4]" />
-              <span>Editar perfil</span>
+          {/* Custom Status */}
+          {currentUser.custom_status && (
+            <div className="p-2 rounded-[6px] bg-[#1E1F22] border border-[#1F2023] text-xs text-[#DBDEE1] flex items-center gap-1.5">
+              <Smile size={13} className="text-[#5865F2] flex-shrink-0" />
+              <span className="truncate">{currentUser.custom_status}</span>
             </div>
-          </button>
+          )}
 
-          {/* Status Selector */}
-          <div className="relative">
+          <div className="h-[1px] bg-[#1E1F22]" />
+
+          {/* Menu Options List */}
+          <div className="space-y-0.5 text-xs font-medium">
             <button
               type="button"
-              onClick={() => setShowStatusSubmenu((p) => !p)}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[4px] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors"
+              onClick={() => {
+                onClose();
+                onOpenEditProfile();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-[4px] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <span
-                  className="w-2.5 h-2.5 rounded-full shadow-sm"
-                  style={{
-                    backgroundColor:
-                      currentUser.status === 'dnd'
-                        ? '#F23F43'
-                        : currentUser.status === 'idle'
-                        ? '#F0B232'
-                        : currentUser.status === 'offline'
-                        ? '#80848E'
-                        : '#23A55A'
-                  }}
-                />
-                <span className="capitalize">{currentUser.status === 'dnd' ? 'Não perturbar' : currentUser.status === 'idle' ? 'Ausente' : currentUser.status === 'offline' ? 'Invisível' : 'Disponível'}</span>
+              <div className="flex items-center gap-2.5">
+                <Edit3 size={15} className="text-[#949BA4]" />
+                <span>Editar perfil</span>
               </div>
-              <ChevronRight size={13} className="text-[#949BA4]" />
             </button>
 
-            {/* Status Flyout */}
-            {showStatusSubmenu && (
-              <div className="absolute left-full bottom-0 ml-1 w-48 bg-[#111214] border border-[#2B2D31] rounded-[6px] shadow-2xl p-1 space-y-0.5 z-[100000] animate-msg-enter">
-                {statuses.map((st) => (
-                  <button
-                    key={st.key}
-                    type="button"
-                    onClick={() => {
-                      onChangeStatus(st.key);
-                      setShowStatusSubmenu(false);
+            {/* Status Selector with Flyout */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowStatusSubmenu((p) => !p)}
+                className="w-full flex items-center justify-between px-2.5 py-2 rounded-[4px] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shadow-sm"
+                    style={{
+                      backgroundColor:
+                        currentUser.status === 'dnd'
+                          ? '#F23F43'
+                          : currentUser.status === 'idle'
+                          ? '#F0B232'
+                          : currentUser.status === 'offline'
+                          ? '#80848E'
+                          : '#23A55A'
                     }}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-[4px] hover:bg-[#35373C] text-left transition-colors"
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: st.color }} />
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-semibold text-[#F2F3F5]">{st.label}</span>
-                    </div>
-                  </button>
-                ))}
+                  />
+                  <span>
+                    {currentUser.status === 'dnd'
+                      ? 'Não perturbar'
+                      : currentUser.status === 'idle'
+                      ? 'Ausente'
+                      : currentUser.status === 'offline'
+                      ? 'Invisível'
+                      : 'Disponível'}
+                  </span>
+                </div>
+                <ChevronRight size={14} className="text-[#949BA4]" />
+              </button>
+
+              {/* Status Flyout */}
+              {showStatusSubmenu && (
+                <div className="absolute left-full bottom-0 ml-1 w-48 bg-[#111214] border border-[#2B2D31] rounded-[8px] shadow-2xl p-1 space-y-0.5 z-[100000] animate-msg-enter">
+                  {statuses.map((st) => (
+                    <button
+                      key={st.key}
+                      type="button"
+                      onClick={() => {
+                        onChangeStatus(st.key);
+                        setShowStatusSubmenu(false);
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-[4px] hover:bg-[#35373C] text-left transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: st.color }} />
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-semibold text-[#F2F3F5]">{st.label}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={onCopyId}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-[4px] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <Copy size={15} className="text-[#949BA4]" />
+                <span>Copiar ID do usuário</span>
               </div>
-            )}
+            </button>
+
+            <div className="h-[1px] bg-[#1E1F22] my-1" />
+
+            <button
+              type="button"
+              onClick={onLogout}
+              className="w-full flex items-center justify-between px-2.5 py-2 rounded-[4px] hover:bg-[#DA373C]/20 text-[#DA373C] transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <LogOut size={15} />
+                <span>Sair da conta</span>
+              </div>
+            </button>
           </div>
-
-          <button
-            type="button"
-            onClick={onCopyId}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[4px] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Copy size={14} className="text-[#949BA4]" />
-              <span>Copiar ID do usuário</span>
-            </div>
-          </button>
-
-          <div className="h-[1px] bg-[#232428] my-0.5" />
-
-          <button
-            type="button"
-            onClick={onLogout}
-            className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[4px] hover:bg-[#DA373C]/20 text-[#DA373C] transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <LogOut size={14} />
-              <span>Sair da conta</span>
-            </div>
-          </button>
         </div>
       </div>
     </>
