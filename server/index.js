@@ -70,6 +70,8 @@ async function initDatabaseMigrations() {
     await query(`ALTER TABLE servers ADD COLUMN verification_level VARCHAR(20) DEFAULT 'none'`).catch(() => {});
     await query(`ALTER TABLE servers ADD COLUMN default_notifications VARCHAR(20) DEFAULT 'all'`).catch(() => {});
     await query(`ALTER TABLE servers ADD COLUMN explicit_content_filter VARCHAR(20) DEFAULT 'disabled'`).catch(() => {});
+    await query(`ALTER TABLE servers ADD COLUMN is_public BOOLEAN DEFAULT TRUE`).catch(() => {});
+    await query(`ALTER TABLE servers ADD COLUMN category VARCHAR(50) DEFAULT 'Geral'`).catch(() => {});
 
     // Server Roles table
     await query(`
@@ -1058,12 +1060,14 @@ app.delete('/api/servers/:serverId/emojis/:emojiId', async (req, res) => {
 // Create / Get Server Invite Link
 app.post('/api/servers/:serverId/invites', async (req, res) => {
   const { serverId } = req.params;
-  const { inviter_id } = req.body;
+  const { inviter_id, force_new } = req.body;
 
   try {
-    const [existing] = await query('SELECT * FROM server_invites WHERE server_id = ? LIMIT 1', [serverId]);
-    if (existing) {
-      return res.json({ success: true, invite: existing, url: `https://orbitbr.gg/${existing.code}` });
+    if (!force_new) {
+      const [existing] = await query('SELECT * FROM server_invites WHERE server_id = ? ORDER BY created_at DESC LIMIT 1', [serverId]);
+      if (existing) {
+        return res.json({ success: true, invite: existing, code: existing.code });
+      }
     }
 
     const inviteCode = `OB-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
@@ -1073,10 +1077,224 @@ app.post('/api/servers/:serverId/invites', async (req, res) => {
     );
 
     const [newInvite] = await query('SELECT * FROM server_invites WHERE code = ?', [inviteCode]);
-    res.json({ success: true, invite: newInvite, url: `https://orbitbr.gg/${inviteCode}` });
+    res.json({ success: true, invite: newInvite, code: inviteCode });
   } catch (err) {
     console.error('Create invite error:', err);
     res.status(500).json({ error: 'Failed to create invite' });
+  }
+});
+
+// Delete Invite Link
+app.delete('/api/servers/:serverId/invites/:code', async (req, res) => {
+  const { serverId, code } = req.params;
+  try {
+    await query('DELETE FROM server_invites WHERE server_id = ? AND code = ?', [serverId, code]);
+    const invites = await query('SELECT * FROM server_invites WHERE server_id = ? ORDER BY created_at DESC', [serverId]);
+    res.json({ success: true, invites });
+  } catch (err) {
+    console.error('Delete invite error:', err);
+    res.status(500).json({ error: 'Failed to delete invite' });
+  }
+});
+
+// Inspect Invite Code (Preview invite details)
+app.get('/api/invites/:code', async (req, res) => {
+  const { code } = req.params;
+  try {
+    const [invite] = await query('SELECT * FROM server_invites WHERE code = ?', [code]);
+    if (!invite) {
+      return res.status(404).json({ error: 'Convite inválido ou expirado' });
+    }
+
+    const [server] = await query(`
+      SELECT 
+        s.*,
+        u.username as owner_username,
+        u.display_name as owner_display_name,
+        (SELECT COUNT(*) FROM server_members WHERE server_id = s.id) as member_count,
+        (SELECT COUNT(*) FROM server_members sm JOIN users usr ON sm.user_id = usr.id WHERE sm.server_id = s.id AND usr.status != 'offline') as online_count
+      FROM servers s
+      JOIN users u ON s.owner_id = u.id
+      WHERE s.id = ?
+    `, [invite.server_id]);
+
+    if (!server) {
+      return res.status(404).json({ error: 'Servidor associado ao convite não foi encontrado' });
+    }
+
+    const [inviter] = await query(
+      'SELECT id, username, display_name, avatar_color, avatar_url FROM users WHERE id = ?',
+      [invite.inviter_id]
+    );
+
+    res.json({
+      success: true,
+      invite,
+      server,
+      inviter: inviter || { id: 'system', username: 'Sistema', display_name: 'Orbit' }
+    });
+  } catch (err) {
+    console.error('Inspect invite error:', err);
+    res.status(500).json({ error: 'Erro ao verificar convite' });
+  }
+});
+
+// Join Server via Invite Code
+app.post('/api/invites/:code/join', async (req, res) => {
+  const { code } = req.params;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'Usuário não autenticado' });
+  }
+
+  try {
+    const [invite] = await query('SELECT * FROM server_invites WHERE code = ?', [code]);
+    if (!invite) {
+      return res.status(404).json({ error: 'Convite inválido ou expirado' });
+    }
+
+    const serverId = invite.server_id;
+    const [existingMember] = await query(
+      'SELECT * FROM server_members WHERE server_id = ? AND user_id = ?',
+      [serverId, user_id]
+    );
+
+    if (!existingMember) {
+      const memberId = `sm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      await query(
+        'INSERT INTO server_members (id, server_id, user_id, role, joined_at) VALUES (?, ?, ?, "member", NOW())',
+        [memberId, serverId, user_id]
+      );
+      await query('UPDATE server_invites SET uses = uses + 1 WHERE code = ?', [code]).catch(() => {});
+      
+      await query(
+        'INSERT INTO server_audit_logs (id, server_id, user_id, action, details) VALUES (?, ?, ?, ?, ?)',
+        [`log_${Date.now()}`, serverId, user_id, 'CONVITE_UTILIZADO', `Entrou no servidor pelo convite ${code}`]
+      ).catch(() => {});
+    }
+
+    const [serverData] = await query('SELECT * FROM servers WHERE id = ?', [serverId]);
+    const channels = await query('SELECT * FROM channels WHERE server_id = ? ORDER BY position ASC', [serverId]);
+    const members = await query(
+      `SELECT sm.*, u.username, u.display_name, u.tag, u.status, u.avatar_color, u.avatar_url
+       FROM server_members sm
+       JOIN users u ON sm.user_id = u.id
+       WHERE sm.server_id = ?`,
+      [serverId]
+    );
+
+    io.emit('server_members_updated', { serverId, members });
+
+    res.json({
+      success: true,
+      server: serverData,
+      channels,
+      members,
+      already_member: !!existingMember
+    });
+  } catch (err) {
+    console.error('Join invite error:', err);
+    res.status(500).json({ error: 'Falha ao entrar no servidor pelo convite' });
+  }
+});
+
+// Discover Public Servers
+app.get('/api/servers/discover', async (req, res) => {
+  const { q, category } = req.query;
+
+  try {
+    let sql = `
+      SELECT 
+        s.id, 
+        s.name, 
+        s.icon_url, 
+        s.banner_url, 
+        s.description, 
+        s.created_at,
+        COALESCE(s.category, 'Geral') as category,
+        (SELECT COUNT(*) FROM server_members WHERE server_id = s.id) as member_count,
+        (SELECT COUNT(*) FROM server_members sm JOIN users u ON sm.user_id = u.id WHERE sm.server_id = s.id AND u.status != 'offline') as online_count,
+        (SELECT COUNT(*) FROM channels WHERE server_id = s.id) as channel_count
+      FROM servers s
+      WHERE (s.is_public IS NULL OR s.is_public = 1)
+    `;
+    const params = [];
+
+    if (category && category !== 'Todos') {
+      sql += ' AND s.category = ?';
+      params.push(category);
+    }
+
+    if (q && q.trim()) {
+      sql += ' AND (s.name LIKE ? OR s.description LIKE ?)';
+      params.push(`%${q.trim()}%`, `%${q.trim()}%`);
+    }
+
+    sql += ' ORDER BY member_count DESC, s.created_at DESC LIMIT 50';
+
+    const servers = await query(sql, params);
+    res.json({ success: true, servers });
+  } catch (err) {
+    console.error('Discover servers error:', err);
+    res.status(500).json({ error: 'Falha ao buscar servidores públicos' });
+  }
+});
+
+// Join Public Server Directly
+app.post('/api/servers/:serverId/join', async (req, res) => {
+  const { serverId } = req.params;
+  const { user_id } = req.body;
+
+  if (!user_id) {
+    return res.status(400).json({ error: 'Usuário não autenticado' });
+  }
+
+  try {
+    const [serverData] = await query('SELECT * FROM servers WHERE id = ?', [serverId]);
+    if (!serverData) {
+      return res.status(404).json({ error: 'Servidor não encontrado' });
+    }
+
+    const [existingMember] = await query(
+      'SELECT * FROM server_members WHERE server_id = ? AND user_id = ?',
+      [serverId, user_id]
+    );
+
+    if (!existingMember) {
+      const memberId = `sm_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      await query(
+        'INSERT INTO server_members (id, server_id, user_id, role, joined_at) VALUES (?, ?, ?, "member", NOW())',
+        [memberId, serverId, user_id]
+      );
+      
+      await query(
+        'INSERT INTO server_audit_logs (id, server_id, user_id, action, details) VALUES (?, ?, ?, ?, ?)',
+        [`log_${Date.now()}`, serverId, user_id, 'ENTROU_DESCOBERTA', 'Entrou pelo Descobrir Servidores']
+      ).catch(() => {});
+    }
+
+    const channels = await query('SELECT * FROM channels WHERE server_id = ? ORDER BY position ASC', [serverId]);
+    const members = await query(
+      `SELECT sm.*, u.username, u.display_name, u.tag, u.status, u.avatar_color, u.avatar_url
+       FROM server_members sm
+       JOIN users u ON sm.user_id = u.id
+       WHERE sm.server_id = ?`,
+      [serverId]
+    );
+
+    io.emit('server_members_updated', { serverId, members });
+
+    res.json({
+      success: true,
+      server: serverData,
+      channels,
+      members,
+      already_member: !!existingMember
+    });
+  } catch (err) {
+    console.error('Join public server error:', err);
+    res.status(500).json({ error: 'Falha ao entrar no servidor' });
   }
 });
 

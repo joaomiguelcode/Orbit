@@ -82,7 +82,8 @@ import {
   MoveDown,
   CheckSquare,
   Square,
-  Zap
+  Zap,
+  GraduationCap
 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || (
@@ -2071,21 +2072,43 @@ function DiscordServerSettingsModal({
   };
 
   // Invite Handler
-  const handleGetInvite = async () => {
+  const handleGetInvite = async (forceNew = false) => {
     try {
       const res = await fetch(`${API_BASE}/api/servers/${server.id}/invites`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inviter_id: currentUser.id })
+        body: JSON.stringify({ inviter_id: currentUser.id, force_new: forceNew })
       });
       const data = await res.json();
       if (data.success) {
-        setCurrentInviteUrl(data.url);
-        navigator.clipboard.writeText(data.url);
+        const fullUrl = `${window.location.origin}/?invite=${data.code}`;
+        setCurrentInviteUrl(fullUrl);
+        navigator.clipboard.writeText(fullUrl);
         triggerToast('Link de convite oficial copiado!');
+        const settRes = await fetch(`${API_BASE}/api/servers/${server.id}/settings`);
+        const settData = await settRes.json();
+        if (settData.success) {
+          setInvites(settData.invites || []);
+        }
       }
     } catch (err) {
       console.error('Invite error:', err);
+    }
+  };
+
+  const handleDeleteInvite = async (code) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/servers/${server.id}/invites/${code}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        setInvites(data.invites || []);
+        if (currentInviteUrl.includes(code)) setCurrentInviteUrl('');
+        triggerToast('Convite excluído!');
+      }
+    } catch (err) {
+      console.error('Delete invite error:', err);
     }
   };
 
@@ -3176,7 +3199,7 @@ function DiscordServerSettingsModal({
                 </div>
                 <button
                   type="button"
-                  onClick={handleGetInvite}
+                  onClick={() => handleGetInvite(true)}
                   className="px-4 py-2 rounded-[3px] bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
                 >
                   <LinkIcon size={14} />
@@ -3188,13 +3211,13 @@ function DiscordServerSettingsModal({
                 <div className="p-4 bg-[#2B2D31] border border-[#5865F2] rounded-[8px] flex items-center justify-between shadow-md">
                   <div className="flex flex-col">
                     <span className="text-[11px] font-bold text-[#5865F2] uppercase">Link Oficial de Convite</span>
-                    <span className="text-sm font-mono text-white mt-0.5">{currentInviteUrl}</span>
+                    <span className="text-sm font-mono text-white mt-0.5 select-all">{currentInviteUrl}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(currentInviteUrl);
-                      triggerToast('Link copiado!');
+                      triggerToast('Link copiado para a área de transferência!');
                     }}
                     className="px-3.5 py-1.5 rounded-[3px] bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors"
                   >
@@ -3212,24 +3235,43 @@ function DiscordServerSettingsModal({
                   <div className="text-xs text-[#949BA4]">Nenhum convite gerado ainda. Clique em "Gerar Novo Link" acima.</div>
                 ) : (
                   <div className="space-y-2">
-                    {invites.map((inv) => (
-                      <div
-                        key={inv.code}
-                        className="flex items-center justify-between p-2.5 rounded-[4px] bg-[#1E1F22] text-xs font-mono text-[#DBDEE1]"
-                      >
-                        <span>https://orbitbr.gg/{inv.code}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(`https://orbitbr.gg/${inv.code}`);
-                            triggerToast('Link copiado!');
-                          }}
-                          className="text-[#5865F2] hover:underline"
+                    {invites.map((inv) => {
+                      const fullUrl = `${window.location.origin}/?invite=${inv.code}`;
+                      return (
+                        <div
+                          key={inv.code}
+                          className="flex items-center justify-between p-2.5 rounded-[4px] bg-[#1E1F22] text-xs font-mono text-[#DBDEE1]"
                         >
-                          Copiar
-                        </button>
-                      </div>
-                    ))}
+                          <div className="flex items-center gap-3 truncate">
+                            <span className="text-[#5865F2] font-bold">{inv.code}</span>
+                            <span className="text-[#949BA4] truncate">{fullUrl}</span>
+                            <span className="text-[10px] bg-[#2B2D31] text-[#B5BAC1] px-2 py-0.5 rounded-full font-sans">
+                              {inv.uses || 0} {inv.uses === 1 ? 'uso' : 'usos'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(fullUrl);
+                                triggerToast('Link copiado!');
+                              }}
+                              className="text-[#5865F2] hover:underline px-2 py-1 text-xs"
+                            >
+                              Copiar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteInvite(inv.code)}
+                              className="text-[#949BA4] hover:text-[#F23F43] p-1 transition-colors"
+                              title="Excluir convite"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -3401,6 +3443,28 @@ export default function App() {
   // Server Settings States
   const [showServerSettingsModal, setShowServerSettingsModal] = useState(false);
   const [showServerHeaderDropdown, setShowServerHeaderDropdown] = useState(false);
+
+  // Server Discovery & Invite States
+  const [discoverServers, setDiscoverServers] = useState([]);
+  const [discoverCategory, setDiscoverCategory] = useState('Todos');
+  const [discoverSearch, setDiscoverSearch] = useState('');
+  const [isDiscoverLoading, setIsDiscoverLoading] = useState(false);
+
+  // Invite Modal States
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteModalServer, setInviteModalServer] = useState(null);
+  const [inviteLinkData, setInviteLinkData] = useState(null); // { code, url }
+  const [isCopiedInvite, setIsCopiedInvite] = useState(false);
+
+  // Incoming / Pending Invite Link State (Auto-join via URL)
+  const [pendingInviteData, setPendingInviteData] = useState(null); // { invite, server, inviter }
+  const [showPendingInviteModal, setShowPendingInviteModal] = useState(false);
+  const [isJoiningInvite, setIsJoiningInvite] = useState(false);
+
+  // Join by Invite code in Add Server Modal
+  const [joinInviteInput, setJoinInviteInput] = useState('');
+  const [joinInviteError, setJoinInviteError] = useState('');
+  const [isJoiningByInput, setIsJoiningByInput] = useState(false);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -4037,7 +4101,7 @@ export default function App() {
 
   // Load server details when activeServerId changes
   useEffect(() => {
-    if (activeServerId === 'dms') {
+    if (activeServerId === 'dms' || activeServerId === 'discover') {
       setCurrentServerData(null);
       setActiveChannelId(null);
       return;
@@ -4054,6 +4118,55 @@ export default function App() {
       })
       .catch((err) => console.error('Error fetching server details:', err));
   }, [activeServerId]);
+
+  // Fetch discoverable servers
+  const fetchDiscoverServers = useCallback(async (category = 'Todos', search = '') => {
+    setIsDiscoverLoading(true);
+    try {
+      let url = `${API_BASE}/api/servers/discover?`;
+      if (category && category !== 'Todos') url += `category=${encodeURIComponent(category)}&`;
+      if (search && search.trim()) url += `q=${encodeURIComponent(search.trim())}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.success) {
+        setDiscoverServers(data.servers || []);
+      }
+    } catch (err) {
+      console.error('Error fetching discover servers:', err);
+    } finally {
+      setIsDiscoverLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeServerId === 'discover') {
+      fetchDiscoverServers(discoverCategory, discoverSearch);
+    }
+  }, [activeServerId, discoverCategory, discoverSearch, fetchDiscoverServers]);
+
+  // Check URL for invite link (?invite=OB-XXXXX or /invite/OB-XXXXX) on app load
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('invite') || (
+      window.location.pathname.startsWith('/invite/')
+        ? window.location.pathname.replace('/invite/', '').split('/')[0]
+        : null
+    );
+
+    if (code) {
+      fetch(`${API_BASE}/api/invites/${code}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setPendingInviteData(data);
+            setShowPendingInviteModal(true);
+          } else {
+            triggerToast(data.error || 'Convite inválido ou expirado');
+          }
+        })
+        .catch(() => {});
+    }
+  }, [triggerToast]);
 
   // Fetch messages when channel changes
   useEffect(() => {
@@ -4281,6 +4394,133 @@ export default function App() {
       }
     } catch (err) {
       console.error('Channel creation error:', err);
+    }
+  };
+
+  // Open Invite Modal for a server
+  const handleOpenInviteModal = async (targetServer = currentServerData?.server || servers.find(s => s.id === activeServerId)) => {
+    if (!targetServer) return;
+    setInviteModalServer(targetServer);
+    setShowInviteModal(true);
+    setIsCopiedInvite(false);
+    try {
+      const res = await fetch(`${API_BASE}/api/servers/${targetServer.id}/invites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviter_id: currentUser?.id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const fullUrl = `${window.location.origin}/?invite=${data.code}`;
+        setInviteLinkData({ code: data.code, url: fullUrl });
+      }
+    } catch (err) {
+      console.error('Error getting invite link:', err);
+    }
+  };
+
+  // Accept / Join from incoming Invite Modal
+  const handleAcceptInvite = async (code) => {
+    if (!currentUser) {
+      triggerToast('Faça login ou crie uma conta para aceitar o convite!');
+      return;
+    }
+
+    setIsJoiningInvite(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/invites/${code}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUser.id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        triggerToast(`Você entrou em ${data.server.name}!`);
+        setShowPendingInviteModal(false);
+        setPendingInviteData(null);
+        window.history.replaceState({}, document.title, window.location.pathname);
+        await loadUserAppState();
+        setActiveServerId(data.server.id);
+      } else {
+        triggerToast(data.error || 'Falha ao entrar no servidor');
+      }
+    } catch (err) {
+      console.error('Accept invite error:', err);
+      triggerToast('Erro ao aceitar convite');
+    } finally {
+      setIsJoiningInvite(false);
+    }
+  };
+
+  // Join Public Server from Discovery View
+  const handleJoinPublicServer = async (serverId) => {
+    if (!currentUser) {
+      triggerToast('Faça login para entrar nos servidores!');
+      return;
+    }
+
+    if (servers.some((s) => s.id === serverId)) {
+      setActiveServerId(serverId);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/api/servers/${serverId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUser.id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        triggerToast(`Você entrou em ${data.server.name}!`);
+        await loadUserAppState();
+        setActiveServerId(serverId);
+      } else {
+        triggerToast(data.error || 'Falha ao entrar no servidor');
+      }
+    } catch (err) {
+      console.error('Join public server error:', err);
+      triggerToast('Erro ao entrar no servidor');
+    }
+  };
+
+  // Join by Invite code from Add Server Modal input
+  const handleJoinByInviteInput = async (e) => {
+    e?.preventDefault();
+    if (!joinInviteInput.trim()) return;
+
+    let code = joinInviteInput.trim();
+    if (code.includes('?invite=')) {
+      code = code.split('?invite=')[1].split('&')[0];
+    } else if (code.includes('/invite/')) {
+      code = code.split('/invite/')[1].split('?')[0].split('/')[0];
+    }
+
+    setIsJoiningByInput(true);
+    setJoinInviteError('');
+
+    try {
+      const res = await fetch(`${API_BASE}/api/invites/${code}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUser.id })
+      });
+      const data = await res.json();
+      if (data.success) {
+        triggerToast(`Você entrou em ${data.server.name}!`);
+        setShowAddServerModal(false);
+        setJoinInviteInput('');
+        setServerModalStep('templates');
+        await loadUserAppState();
+        setActiveServerId(data.server.id);
+      } else {
+        setJoinInviteError(data.error || 'Convite inválido ou expirado');
+      }
+    } catch (err) {
+      console.error('Join invite input error:', err);
+      setJoinInviteError('Erro ao entrar no servidor. Verifique o código.');
+    } finally {
+      setIsJoiningByInput(false);
     }
   };
 
@@ -4908,10 +5148,18 @@ export default function App() {
 
           {/* Explore Button */}
           <div className="relative group flex items-center justify-center w-full">
-            <span className="server-pill absolute left-0 w-1 bg-white rounded-r-full h-0 group-hover:h-5" />
+            <span
+              className={`server-pill absolute left-0 w-1 bg-white rounded-r-full ${
+                activeServerId === 'discover' ? 'h-10' : 'h-0 group-hover:h-5'
+              }`}
+            />
             <button
-              onClick={() => triggerToast('Descobrir Servidores Públicos')}
-              className="w-12 h-12 rounded-[24px] group-hover:rounded-[16px] bg-[#313338] hover:bg-[#23A55A] text-[#23A55A] hover:text-white flex items-center justify-center transition-all duration-200"
+              onClick={() => setActiveServerId('discover')}
+              className={`w-12 h-12 flex items-center justify-center transition-all duration-200 ${
+                activeServerId === 'discover'
+                  ? 'rounded-[16px] bg-[#23A55A] text-white shadow-md'
+                  : 'rounded-[24px] group-hover:rounded-[16px] bg-[#313338] hover:bg-[#23A55A] text-[#23A55A] hover:text-white'
+              }`}
               title="Explorar Servidores Descobríveis"
             >
               <Compass size={24} />
@@ -4924,7 +5172,39 @@ export default function App() {
       {/* 2. CHANNELS / DM SUB-SIDEBAR (240px, #2B2D31) */}
       {/* ========================================================================= */}
       <aside className="w-60 flex-shrink-0 bg-[#2B2D31] flex flex-col h-full relative z-10">
-        {activeServerId === 'dms' ? (
+        {activeServerId === 'discover' ? (
+          /* Discovery Categories Sub-Sidebar */
+          <>
+            <div className="h-12 px-4 flex items-center border-b border-[#1F2023] shadow-sm font-bold text-sm text-[#F2F3F5] gap-2">
+              <Compass size={18} className="text-[#23A55A]" />
+              <span>Descobrir</span>
+            </div>
+            <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1">
+              {[
+                { id: 'Todos', label: 'Início / Todos', icon: <Compass size={18} /> },
+                { id: 'Jogos', label: 'Jogos', icon: <Gamepad2 size={18} /> },
+                { id: 'Música', label: 'Música', icon: <Music size={18} /> },
+                { id: 'Educação', label: 'Educação & Estudos', icon: <GraduationCap size={18} /> },
+                { id: 'Tecnologia', label: 'Ciência & Tecnologia', icon: <Globe size={18} /> },
+                { id: 'Criadores', label: 'Criadores & Arte', icon: <Sparkles size={18} /> },
+                { id: 'Geral', label: 'Comunidades & Geral', icon: <Users size={18} /> },
+              ].map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setDiscoverCategory(cat.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[4px] text-sm font-medium transition-all ${
+                    discoverCategory === cat.id
+                      ? 'bg-[#404249] text-white shadow-sm font-semibold'
+                      : 'text-[#949BA4] hover:bg-[#35373C] hover:text-[#DBDEE1]'
+                  }`}
+                >
+                  {cat.icon}
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        ) : activeServerId === 'dms' ? (
           /* DM Sub-Sidebar Header */
           <>
             <div className="h-12 px-2.5 flex items-center border-b border-[#1F2023] shadow-sm">
@@ -5052,20 +5332,9 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={async () => {
+                    onClick={() => {
                       setShowServerHeaderDropdown(false);
-                      try {
-                        const res = await fetch(`${API_BASE}/api/servers/${activeServer.id}/invites`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ inviter_id: currentUser?.id })
-                        });
-                        const data = await res.json();
-                        if (data.url) {
-                          navigator.clipboard.writeText(data.url);
-                          triggerToast('Link oficial de convite copiado!');
-                        }
-                      } catch (err) {}
+                      handleOpenInviteModal(activeServer);
                     }}
                     className="w-full flex items-center justify-between px-2.5 py-2 rounded-[3px] text-[#5865F2] hover:bg-[#5865F2] hover:text-white transition-colors text-left"
                   >
@@ -5349,7 +5618,172 @@ export default function App() {
       {/* 3. MAIN CONTENT VIEWPORT (Cosmic Ambient Glow) */}
       {/* ========================================================================= */}
       <main className="flex-1 flex flex-col h-full min-w-0 bg-[#313338] relative overflow-hidden text-[#DBDEE1]">
-        {activeServerId === 'dms' && !activeDmFriend ? (
+        {activeServerId === 'discover' ? (
+          /* ===================================================================== */
+          /* SERVER DISCOVERY VIEW */
+          /* ===================================================================== */
+          <div className="flex-1 flex flex-col h-full overflow-y-auto bg-[#313338]">
+            {/* Discovery Hero Banner */}
+            <div className="relative p-8 md:p-12 overflow-hidden bg-gradient-to-r from-[#242938] via-[#1E1F29] to-[#1B1D24] border-b border-[#1F2023] flex flex-col items-center justify-center text-center">
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#5865F2]/20 via-transparent to-transparent pointer-events-none" />
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#5865F2]/10 border border-[#5865F2]/30 text-[#5865F2] text-xs font-semibold mb-3">
+                <Compass size={14} />
+                <span>Explorar Comunidades</span>
+              </div>
+              <h1 className="text-2xl md:text-3xl font-extrabold text-[#F2F3F5] tracking-tight max-w-xl">
+                Encontre sua comunidade no Orbit Br
+              </h1>
+              <p className="text-sm text-[#949BA4] mt-2 max-w-lg">
+                De jogos, música e estudos a programação e amizades, encontre seu espaço no Orbit.
+              </p>
+
+              {/* Search Bar */}
+              <div className="mt-6 w-full max-w-lg relative">
+                <input
+                  type="text"
+                  placeholder="Explorar servidores públicos (ex: Jogos, FiveM, Programação...)"
+                  value={discoverSearch}
+                  onChange={(e) => setDiscoverSearch(e.target.value)}
+                  className="w-full h-12 pl-11 pr-10 rounded-[8px] bg-[#1E1F22] border border-[#2B2D31] focus:border-[#5865F2] outline-none text-[#F2F3F5] text-sm shadow-lg transition-colors placeholder:text-[#949BA4]"
+                />
+                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#949BA4]" />
+                {discoverSearch && (
+                  <button
+                    onClick={() => setDiscoverSearch('')}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#949BA4] hover:text-white"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Discover Grid Content */}
+            <div className="p-6 md:p-8 flex-1 max-w-7xl mx-auto w-full">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-bold text-[#F2F3F5] flex items-center gap-2">
+                    <span>{discoverCategory === 'Todos' ? 'Servidores em Destaque' : `Servidores de ${discoverCategory}`}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-[#2B2D31] text-[#949BA4] font-normal">
+                      {discoverServers.length} {discoverServers.length === 1 ? 'servidor' : 'servidores'}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[#949BA4] mt-0.5">Clique em um servidor para explorar ou entrar diretamente.</p>
+                </div>
+              </div>
+
+              {isDiscoverLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 text-[#949BA4] gap-3">
+                  <RefreshCw size={28} className="animate-spin text-[#5865F2]" />
+                  <span className="text-sm">Carregando servidores disponíveis...</span>
+                </div>
+              ) : discoverServers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center bg-[#2B2D31]/40 rounded-[12px] border border-[#1F2023] p-8">
+                  <div className="w-16 h-16 rounded-full bg-[#1E1F22] flex items-center justify-center text-[#949BA4] mb-4">
+                    <Search size={28} />
+                  </div>
+                  <h3 className="text-base font-bold text-[#F2F3F5]">Nenhum servidor encontrado</h3>
+                  <p className="text-xs text-[#949BA4] mt-1 max-w-sm">
+                    {discoverSearch ? `Não encontramos nenhum resultado para "${discoverSearch}".` : 'Nenhum servidor público nesta categoria ainda. Que tal criar o primeiro?'}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowAddServerModal(true);
+                      setServerModalStep('templates');
+                    }}
+                    className="mt-4 px-4 py-2 rounded-[4px] bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold transition-colors"
+                  >
+                    Criar um Servidor
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {discoverServers.map((srv) => {
+                    const isMember = servers.some((s) => s.id === srv.id);
+                    const initials = srv.name.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase();
+
+                    return (
+                      <div
+                        key={srv.id}
+                        className="bg-[#2B2D31] hover:bg-[#35373C] border border-[#1F2023] rounded-[8px] overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-1 hover:shadow-xl group"
+                      >
+                        {/* Server Card Banner */}
+                        <div
+                          className="h-28 w-full bg-cover bg-center relative"
+                          style={{
+                            background: srv.banner_url
+                              ? `url(${srv.banner_url}) center/cover`
+                              : 'linear-gradient(135deg, #5865F2 0%, #23A55A 100%)'
+                          }}
+                        >
+                          <div className="absolute inset-0 bg-black/20" />
+                        </div>
+
+                        {/* Card Body */}
+                        <div className="p-4 flex-1 flex flex-col relative -mt-8">
+                          <div className="flex items-end justify-between mb-3">
+                            <div className="w-14 h-14 rounded-[16px] bg-[#1E1F22] border-4 border-[#2B2D31] group-hover:border-[#35373C] flex items-center justify-center font-bold text-white shadow-md text-base transition-colors overflow-hidden">
+                              {srv.icon_url ? (
+                                <img src={srv.icon_url} alt={srv.name} className="w-full h-full object-cover" />
+                              ) : (
+                                <span>{initials}</span>
+                              )}
+                            </div>
+                            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#1E1F22] text-[#5865F2] border border-[#5865F2]/30">
+                              {srv.category || 'Geral'}
+                            </span>
+                          </div>
+
+                          <h3 className="font-bold text-sm text-[#F2F3F5] truncate group-hover:text-[#5865F2] transition-colors" title={srv.name}>
+                            {srv.name}
+                          </h3>
+
+                          <p className="text-xs text-[#949BA4] mt-1.5 line-clamp-2 min-h-[32px] leading-relaxed">
+                            {srv.description || 'Comunidade acolhedora e ativa no Orbit Br. Entre e venha conversar!'}
+                          </p>
+
+                          {/* Stats */}
+                          <div className="flex items-center gap-3 mt-4 pt-3 border-t border-[#1F2023] text-[11px] text-[#949BA4]">
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-[#23A55A]" />
+                              <span>{srv.online_count || 1} Online</span>
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-[#80848E]" />
+                              <span>{srv.member_count || 1} Membros</span>
+                            </span>
+                          </div>
+
+                          {/* Action Button */}
+                          <button
+                            onClick={() => (isMember ? setActiveServerId(srv.id) : handleJoinPublicServer(srv.id))}
+                            className={`w-full mt-3 py-2 px-3 rounded-[4px] text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                              isMember
+                                ? 'bg-[#404249] hover:bg-[#5865F2] text-white'
+                                : 'bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-md'
+                            }`}
+                          >
+                            {isMember ? (
+                              <>
+                                <Check size={14} />
+                                <span>Já participa (Abrir)</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus size={14} />
+                                <span>Entrar no Servidor</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : activeServerId === 'dms' && !activeDmFriend ? (
           /* ===================================================================== */
           /* FRIENDS ZERO-STATE TAB VIEW */
           /* ===================================================================== */
@@ -6420,7 +6854,72 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+
+                <div className="mt-4 pt-4 border-t border-[#1F2023] text-center">
+                  <h4 className="text-xs font-semibold text-[#B5BAC1] mb-2">Já tem um convite de um amigo?</h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setJoinInviteInput('');
+                      setJoinInviteError('');
+                      setServerModalStep('join');
+                    }}
+                    className="w-full py-2.5 px-4 rounded-[4px] bg-[#404249] hover:bg-[#35373C] text-white text-xs font-semibold transition-colors"
+                  >
+                    Entrar em um servidor
+                  </button>
+                </div>
               </>
+            ) : serverModalStep === 'join' ? (
+              <form onSubmit={handleJoinByInviteInput}>
+                <h3 className="text-2xl font-bold text-center text-[#F2F3F5]">
+                  Entrar em um servidor
+                </h3>
+                <p className="text-xs text-center text-[#949BA4] mt-1.5 mb-5 leading-relaxed">
+                  Insira um código ou link de convite para participar de um servidor existente.
+                </p>
+
+                <div className="mb-4">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] mb-2">
+                    Código ou Link do Convite <span className="text-[#F23F43]">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="ex: OB-ABCDE ou https://orbitbr.vercel.app/?invite=OB-ABCDE"
+                    value={joinInviteInput}
+                    onChange={(e) => setJoinInviteInput(e.target.value)}
+                    className="w-full h-10 px-3 rounded-[3px] bg-[#1E1F22] border border-[#1E1F22] focus:border-[#5865F2] outline-none text-[#F2F3F5] text-sm transition-colors"
+                  />
+                  <p className="text-[11px] text-[#949BA4] mt-2">
+                    Os convites possuem formato <strong>OB-XXXXX</strong> ou o link enviado pelo seu amigo.
+                  </p>
+                </div>
+
+                {joinInviteError && (
+                  <div className="mb-4 p-2.5 rounded-[4px] bg-[#F23F43]/10 border border-[#F23F43]/30 text-xs text-[#F23F43] font-medium">
+                    {joinInviteError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-3 border-t border-[#1F2023]">
+                  <button
+                    type="button"
+                    onClick={() => setServerModalStep('templates')}
+                    className="text-xs font-semibold text-[#949BA4] hover:text-white"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isJoiningByInput || !joinInviteInput.trim()}
+                    className="px-6 py-2 rounded-[3px] bg-[#5865F2] hover:bg-[#4752C4] disabled:opacity-50 text-white text-xs font-semibold shadow-sm transition-colors flex items-center gap-1.5"
+                  >
+                    {isJoiningByInput && <RefreshCw size={12} className="animate-spin" />}
+                    <span>Entrar no Servidor</span>
+                  </button>
+                </div>
+              </form>
             ) : (
               <form onSubmit={handleCreateServer}>
                 <h3 className="text-2xl font-bold text-center text-[#F2F3F5]">
@@ -6460,6 +6959,176 @@ export default function App() {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5.1 DEDICATED SERVER INVITE GENERATOR MODAL */}
+      {/* ========================================================================= */}
+      {showInviteModal && inviteModalServer && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-msg-enter"
+          onClick={() => setShowInviteModal(false)}
+        >
+          <div
+            className="w-[460px] bg-[#313338] text-[#DBDEE1] rounded-[6px] shadow-2xl overflow-hidden p-6 relative border border-[#1F2023]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setShowInviteModal(false)}
+              className="absolute top-4 right-4 text-[#949BA4] hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-[12px] bg-[#5865F2] text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                {inviteModalServer.icon_url ? (
+                  <img src={inviteModalServer.icon_url} alt={inviteModalServer.name} className="w-full h-full object-cover rounded-[12px]" />
+                ) : (
+                  inviteModalServer.name.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase()
+                )}
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#F2F3F5] leading-tight">
+                  Convidar amigos para {inviteModalServer.name}
+                </h3>
+                <p className="text-xs text-[#949BA4]">Envie este link para qualquer amigo entrar no servidor.</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] mb-2">
+                  Link de Convite Oficial
+                </label>
+                <div className="flex items-center gap-2 p-1 bg-[#1E1F22] rounded-[4px] border border-[#2B2D31] focus-within:border-[#5865F2]">
+                  <input
+                    type="text"
+                    readOnly
+                    value={inviteLinkData?.url || `${window.location.origin}/?invite=${inviteLinkData?.code || '...'}`}
+                    className="bg-transparent flex-1 text-xs font-mono text-[#F2F3F5] px-2.5 py-1.5 outline-none select-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const urlToCopy = inviteLinkData?.url || `${window.location.origin}/?invite=${inviteLinkData?.code}`;
+                      navigator.clipboard.writeText(urlToCopy);
+                      setIsCopiedInvite(true);
+                      triggerToast('Link de convite copiado para a área de transferência!');
+                      setTimeout(() => setIsCopiedInvite(false), 3000);
+                    }}
+                    className={`px-4 py-2 rounded-[3px] text-xs font-semibold transition-all flex items-center gap-1.5 flex-shrink-0 ${
+                      isCopiedInvite
+                        ? 'bg-[#23A55A] text-white'
+                        : 'bg-[#5865F2] hover:bg-[#4752C4] text-white shadow-sm'
+                    }`}
+                  >
+                    {isCopiedInvite ? <Check size={14} /> : <Copy size={14} />}
+                    <span>{isCopiedInvite ? 'Copiado!' : 'Copiar'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-3 bg-[#2B2D31] rounded-[6px] border border-[#1F2023] flex items-center justify-between text-xs text-[#949BA4]">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-[#23A55A]" />
+                  <span>Seu link de convite nunca expira.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`${API_BASE}/api/servers/${inviteModalServer.id}/invites`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ inviter_id: currentUser?.id, force_new: true })
+                      });
+                      const data = await res.json();
+                      if (data.success) {
+                        const fullUrl = `${window.location.origin}/?invite=${data.code}`;
+                        setInviteLinkData({ code: data.code, url: fullUrl });
+                        triggerToast('Novo código de convite gerado!');
+                      }
+                    } catch (e) {}
+                  }}
+                  className="text-[#5865F2] hover:underline text-xs flex items-center gap-1"
+                >
+                  <RefreshCw size={12} />
+                  <span>Gerar novo</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 5.2 INCOMING INVITE ACCEPTANCE MODAL (Triggered via ?invite=OB-XXXXX) */}
+      {/* ========================================================================= */}
+      {showPendingInviteModal && pendingInviteData && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-msg-enter"
+          onClick={() => setShowPendingInviteModal(false)}
+        >
+          <div
+            className="w-[420px] bg-[#313338] text-[#DBDEE1] rounded-[8px] shadow-2xl overflow-hidden p-6 relative border border-[#1F2023] text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                setShowPendingInviteModal(false);
+                window.history.replaceState({}, document.title, window.location.pathname);
+              }}
+              className="absolute top-4 right-4 text-[#949BA4] hover:text-white transition-colors"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="w-16 h-16 mx-auto mb-4 rounded-[20px] bg-[#5865F2] text-white font-bold flex items-center justify-center text-xl shadow-lg border-2 border-[#1F2023] overflow-hidden">
+              {pendingInviteData.server?.icon_url ? (
+                <img src={pendingInviteData.server.icon_url} alt={pendingInviteData.server.name} className="w-full h-full object-cover" />
+              ) : (
+                pendingInviteData.server?.name?.split(' ').map((w) => w[0]).join('').substring(0, 2).toUpperCase() || 'OB'
+              )}
+            </div>
+
+            <span className="text-xs text-[#949BA4] uppercase font-bold tracking-wider block mb-1">
+              {pendingInviteData.inviter?.display_name
+                ? `${pendingInviteData.inviter.display_name} convidou você para participar de`
+                : 'Você foi convidado para entrar em'}
+            </span>
+
+            <h2 className="text-xl font-bold text-[#F2F3F5] mb-3">
+              {pendingInviteData.server?.name}
+            </h2>
+
+            {pendingInviteData.server?.description && (
+              <p className="text-xs text-[#B5BAC1] mb-4 line-clamp-2 px-4">
+                {pendingInviteData.server.description}
+              </p>
+            )}
+
+            <div className="flex items-center justify-center gap-6 py-3 px-4 bg-[#2B2D31] rounded-[6px] border border-[#1F2023] mb-6 text-xs text-[#949BA4]">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#23A55A]" />
+                <span className="text-[#F2F3F5]">{pendingInviteData.server?.online_count || 1}</span> Online
+              </span>
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#80848E]" />
+                <span className="text-[#F2F3F5]">{pendingInviteData.server?.member_count || 1}</span> Membros
+              </span>
+            </div>
+
+            <button
+              onClick={() => handleAcceptInvite(pendingInviteData.invite.code)}
+              disabled={isJoiningInvite}
+              className="w-full py-3 px-4 rounded-[4px] bg-[#5865F2] hover:bg-[#4752C4] disabled:opacity-50 text-white text-sm font-semibold shadow-lg transition-all flex items-center justify-center gap-2"
+            >
+              {isJoiningInvite && <RefreshCw size={16} className="animate-spin" />}
+              <span>{currentUser ? 'Aceitar Convite' : 'Fazer login para entrar'}</span>
+            </button>
           </div>
         </div>
       )}
