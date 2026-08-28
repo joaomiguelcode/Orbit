@@ -23,6 +23,8 @@ import {
   Radio,
   X,
   MessageSquare,
+  MessagesSquare,
+  Megaphone,
   AtSign,
   Sparkles,
   Paperclip,
@@ -3486,6 +3488,17 @@ export default function App() {
   const [newChannelType, setNewChannelType] = useState('text');
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelTopic, setNewChannelTopic] = useState('');
+  const [isChannelPrivate, setIsChannelPrivate] = useState(false);
+  const [targetCategoryId, setTargetCategoryId] = useState(null);
+  const [showChannelEmojiPicker, setShowChannelEmojiPicker] = useState(false);
+
+  const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [isCategoryPrivate, setIsCategoryPrivate] = useState(false);
+  const [showCategoryEmojiPicker, setShowCategoryEmojiPicker] = useState(false);
+
+  const [hideMutedChannels, setHideMutedChannels] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState({});
 
   const [addFriendInput, setAddFriendInput] = useState('');
   const [addFriendStatus, setAddFriendStatus] = useState({ msg: '', type: '' });
@@ -4028,6 +4041,36 @@ export default function App() {
       loadUserAppState();
     });
 
+    s.on('category_created', () => {
+      if (activeServerId && activeServerId !== 'dms') {
+        fetch(`${API_BASE}/api/servers/${activeServerId}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) setCurrentServerData(d);
+          });
+      }
+    });
+
+    s.on('category_deleted', () => {
+      if (activeServerId && activeServerId !== 'dms') {
+        fetch(`${API_BASE}/api/servers/${activeServerId}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) setCurrentServerData(d);
+          });
+      }
+    });
+
+    s.on('channel_created', () => {
+      if (activeServerId && activeServerId !== 'dms') {
+        fetch(`${API_BASE}/api/servers/${activeServerId}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) setCurrentServerData(d);
+          });
+      }
+    });
+
     s.on('user_profile_updated', ({ userId, user: updatedUser }) => {
       // Update currentUser if matching
       setCurrentUser((prev) => {
@@ -4426,11 +4469,84 @@ export default function App() {
     }
   };
 
+  const getChannelIcon = (type, size = 18, className = '') => {
+    switch (type) {
+      case 'voice':
+        return <Volume2 size={size} className={className} />;
+      case 'forum':
+        return <MessagesSquare size={size} className={className} />;
+      case 'announcement':
+        return <Megaphone size={size} className={className} />;
+      case 'stage':
+        return <Radio size={size} className={className} />;
+      case 'text':
+      default:
+        return <Hash size={size} className={className} />;
+    }
+  };
+
+  const handleCreateCategory = async (e) => {
+    e?.preventDefault();
+    if (!newCategoryName.trim() || !activeServerId) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/servers/${activeServerId}/categories`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCategoryName.trim(),
+          is_private: isCategoryPrivate,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        triggerToast(`Categoria '${data.category.name}' criada!`);
+        setShowCreateCategoryModal(false);
+        setNewCategoryName('');
+        setIsCategoryPrivate(false);
+        fetch(`${API_BASE}/api/servers/${activeServerId}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) setCurrentServerData(d);
+          });
+      } else {
+        triggerToast(data.error || 'Erro ao criar categoria');
+      }
+    } catch (err) {
+      console.error('Category creation error:', err);
+      triggerToast('Erro ao criar categoria');
+    }
+  };
+
+  const handleDeleteCategory = async (categoryId) => {
+    if (!categoryId || !activeServerId) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/servers/${activeServerId}/categories/${categoryId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        triggerToast('Categoria removida');
+        fetch(`${API_BASE}/api/servers/${activeServerId}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) setCurrentServerData(d);
+          });
+      }
+    } catch (err) {
+      console.error('Delete category error:', err);
+    }
+  };
+
   const handleCreateChannel = async (e) => {
     e?.preventDefault();
     if (!newChannelName.trim() || !activeServerId) return;
 
     try {
+      const targetCat = currentServerData?.categories?.find((c) => c.id === targetCategoryId);
+      const defaultCat = newChannelType === 'voice' ? 'VOICE CHANNELS' : (newChannelType === 'stage' ? 'PALCO' : 'TEXT CHANNELS');
+
       const res = await fetch(`${API_BASE}/api/servers/${activeServerId}/channels`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -4438,27 +4554,35 @@ export default function App() {
           name: newChannelName.trim(),
           topic: newChannelTopic.trim(),
           type: newChannelType,
+          is_private: isChannelPrivate,
+          category_id: targetCategoryId || null,
+          category: targetCat ? targetCat.name : defaultCat,
         }),
       });
       const data = await res.json();
 
       if (data.success) {
-        triggerToast(`Channel #${data.channel.name} created!`);
+        triggerToast(`Canal #${data.channel.name} criado!`);
         setShowCreateChannelModal(false);
         setNewChannelName('');
         setNewChannelTopic('');
+        setIsChannelPrivate(false);
+        setTargetCategoryId(null);
         // Reload server data
         fetch(`${API_BASE}/api/servers/${activeServerId}`)
           .then((r) => r.json())
           .then((d) => {
             if (d.success) setCurrentServerData(d);
           });
-        if (data.channel.type === 'text') {
+        if (data.channel.type !== 'voice' && data.channel.type !== 'stage') {
           setActiveChannelId(data.channel.id);
         }
+      } else {
+        triggerToast(data.error || 'Erro ao criar canal');
       }
     } catch (err) {
       console.error('Channel creation error:', err);
+      triggerToast('Erro ao criar canal');
     }
   };
 
@@ -5370,15 +5494,68 @@ export default function App() {
               {/* Server Header Dropdown Menu */}
               {showServerHeaderDropdown && (
                 <div
-                  className="absolute top-13 left-2 right-2 bg-[#111214] border border-[#232428] rounded-[6px] shadow-2xl p-1.5 z-50 text-xs font-semibold text-[#DBDEE1] space-y-0.5 animate-msg-enter"
+                  className="absolute top-13 left-2 right-2 bg-[#111214] border border-[#232428] rounded-[8px] shadow-2xl p-1.5 z-50 text-xs font-semibold text-[#DBDEE1] space-y-0.5 animate-msg-enter select-none"
                   onClick={(e) => e.stopPropagation()}
                 >
+                  <button
+                    onClick={() => setHideMutedChannels((p) => !p)}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-[4px] hover:bg-[#35373C] text-[#DBDEE1] hover:text-white transition-colors text-left font-medium"
+                  >
+                    <span>Ocultar canais silenciados</span>
+                    <div
+                      className={`w-4 h-4 rounded-[4px] border transition-colors flex items-center justify-center ${
+                        hideMutedChannels ? 'border-[#5865F2] bg-[#5865F2]' : 'border-[#4E5058] bg-[#1E1F22]'
+                      }`}
+                    >
+                      {hideMutedChannels && <Check size={12} className="text-white stroke-[3]" />}
+                    </div>
+                  </button>
+
+                  <div className="my-1 h-[1px] bg-[#232428]" />
+
+                  <button
+                    onClick={() => {
+                      setShowServerHeaderDropdown(false);
+                      setTargetCategoryId(null);
+                      setNewChannelType('text');
+                      setShowCreateChannelModal(true);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-[4px] hover:bg-[#5865F2] hover:text-white transition-colors text-left text-sm font-medium"
+                  >
+                    <span>Criar canal</span>
+                    <Plus size={16} />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowServerHeaderDropdown(false);
+                      setShowCreateCategoryModal(true);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-[4px] hover:bg-[#5865F2] hover:text-white transition-colors text-left text-sm font-medium"
+                  >
+                    <span>Criar categoria</span>
+                    <FolderPlus size={16} />
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowServerHeaderDropdown(false);
+                      handleOpenInviteModal(activeServer);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-[4px] hover:bg-[#5865F2] hover:text-white transition-colors text-left text-sm font-medium"
+                  >
+                    <span>Convidar para o servidor</span>
+                    <UserPlus size={16} />
+                  </button>
+
+                  <div className="my-1 h-[1px] bg-[#232428]" />
+
                   <button
                     onClick={() => {
                       setShowServerHeaderDropdown(false);
                       setShowServerSettingsModal(true);
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-[3px] hover:bg-[#5865F2] hover:text-white transition-colors text-left"
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded-[4px] hover:bg-[#35373C] text-[#949BA4] hover:text-white transition-colors text-left text-xs font-medium"
                   >
                     <span>Configurações do Servidor</span>
                     <Settings size={14} />
@@ -5387,34 +5564,9 @@ export default function App() {
                   <button
                     onClick={() => {
                       setShowServerHeaderDropdown(false);
-                      setNewChannelType('text');
-                      setShowCreateChannelModal(true);
-                    }}
-                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-[3px] hover:bg-[#5865F2] hover:text-white transition-colors text-left"
-                  >
-                    <span>Criar Canal</span>
-                    <Plus size={14} />
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowServerHeaderDropdown(false);
-                      handleOpenInviteModal(activeServer);
-                    }}
-                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-[3px] text-[#5865F2] hover:bg-[#5865F2] hover:text-white transition-colors text-left"
-                  >
-                    <span>Convidar Pessoas</span>
-                    <UserPlus size={14} />
-                  </button>
-
-                  <div className="my-1 h-[1px] bg-[#232428]" />
-
-                  <button
-                    onClick={() => {
-                      setShowServerHeaderDropdown(false);
                       triggerToast('Configurações de Notificação do Servidor');
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-[3px] hover:bg-[#35373C] text-[#949BA4] hover:text-white transition-colors text-left"
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded-[4px] hover:bg-[#35373C] text-[#949BA4] hover:text-white transition-colors text-left text-xs font-medium"
                   >
                     <span>Configurações de Notificação</span>
                     <Bell size={14} />
@@ -5425,7 +5577,7 @@ export default function App() {
                       setShowServerHeaderDropdown(false);
                       triggerToast('Configurações de Privacidade');
                     }}
-                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-[3px] hover:bg-[#35373C] text-[#949BA4] hover:text-white transition-colors text-left"
+                    className="w-full flex items-center justify-between px-3 py-1.5 rounded-[4px] hover:bg-[#35373C] text-[#949BA4] hover:text-white transition-colors text-left text-xs font-medium"
                   >
                     <span>Privacidade do Servidor</span>
                     <Shield size={14} />
@@ -5436,154 +5588,299 @@ export default function App() {
 
             {/* Channels List */}
             <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-              {/* Text Channels Category */}
-              <div>
-                <div className="flex items-center justify-between px-2 mb-1">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#949BA4] hover:text-[#DBDEE1] cursor-pointer">
-                    Canais de Texto
-                  </span>
-                  <button
-                    onClick={() => {
-                      setNewChannelType('text');
-                      setShowCreateChannelModal(true);
-                    }}
-                    className="text-[#949BA4] hover:text-[#DBDEE1] p-0.5 transition-colors"
-                    title="Criar Canal"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
+              {(() => {
+                const rawCategories = currentServerData?.categories || [];
+                const allChannels = serverChannels.filter((c) => {
+                  if (hideMutedChannels && c.is_muted) return false;
+                  return true;
+                });
 
-                <div className="space-y-0.5">
-                  {textChannels.map((ch) => {
+                const renderChannelRow = (ch) => {
+                  const isVoiceLike = ch.type === 'voice' || ch.type === 'stage';
+                  if (!isVoiceLike) {
                     const isActive = ch.id === activeChannelId;
                     return (
                       <button
                         key={ch.id}
                         onClick={() => setActiveChannelId(ch.id)}
                         onContextMenu={(e) => openCustomContextMenu(e, 'channel', ch)}
-                        className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-[4px] text-sm font-medium transition-all ${
+                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-sm font-medium transition-all ${
                           isActive
                             ? 'bg-[#404249] text-white shadow-sm'
                             : 'text-[#949BA4] hover:bg-[#35373C] hover:text-[#DBDEE1]'
                         }`}
                       >
-                        <Hash size={18} className={isActive ? 'text-[#DBDEE1]' : 'text-[#80848E]'} />
-                        <span className="truncate">{ch.name}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          {getChannelIcon(ch.type, 18, isActive ? 'text-[#DBDEE1]' : 'text-[#80848E]')}
+                          <span className="truncate">{ch.name}</span>
+                        </div>
+                        {ch.is_private ? <Lock size={12} className="text-[#80848E] flex-shrink-0" /> : null}
                       </button>
                     );
-                  })}
-                </div>
-              </div>
+                  }
 
-              {/* Voice Channels Category */}
-              <div>
-                <div className="flex items-center justify-between px-2 mb-1">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-[#949BA4] hover:text-[#DBDEE1] cursor-pointer">
-                    Canais de Voz
-                  </span>
-                  <button
-                    onClick={() => {
-                      setNewChannelType('voice');
-                      setShowCreateChannelModal(true);
-                    }}
-                    className="text-[#949BA4] hover:text-[#DBDEE1] p-0.5 transition-colors"
-                    title="Criar Canal de Voz"
-                  >
-                    <Plus size={14} />
-                  </button>
-                </div>
+                  const isConnected = connectedVoiceChannelId === ch.id;
+                  const isSelected = activeChannelId === ch.id;
+                  const participants = voiceSessions.filter((vs) => vs.channel_id === ch.id);
 
-                <div className="space-y-0.5">
-                  {voiceChannels.map((vch) => {
-                    const isConnected = connectedVoiceChannelId === vch.id;
-                    const isSelected = activeChannelId === vch.id;
-                    const participants = voiceSessions.filter((vs) => vs.channel_id === vch.id);
-
-                    return (
-                      <div key={vch.id} className="group/vch">
-                        <div
-                          onClick={() => handleVoiceToggle(vch.id)}
-                          onContextMenu={(e) => openCustomContextMenu(e, 'channel', vch)}
-                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-sm font-medium transition-all cursor-pointer select-none ${
-                            isSelected || isConnected
-                              ? 'bg-[#404249] text-white'
-                              : 'text-[#949BA4] hover:bg-[#35373C] hover:text-[#DBDEE1]'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Volume2 size={18} className={isSelected || isConnected ? 'text-[#DBDEE1]' : 'text-[#80848E]'} />
-                            <span className="truncate">{vch.name}</span>
-                          </div>
-
-                          <div className="flex items-center gap-1 opacity-0 group-hover/vch:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveChannelId(vch.id);
-                                setShowVoiceChatSidebar(true);
-                              }}
-                              className="p-1 hover:bg-[#404249] rounded text-[#949BA4] hover:text-[#DBDEE1] transition-colors"
-                              title="Abrir Bate-papo de Texto"
-                            >
-                              <MessageSquare size={13} />
-                            </button>
-                          </div>
+                  return (
+                    <div key={ch.id} className="group/vch">
+                      <div
+                        onClick={() => handleVoiceToggle(ch.id)}
+                        onContextMenu={(e) => openCustomContextMenu(e, 'channel', ch)}
+                        className={`w-full flex items-center justify-between px-2 py-1.5 rounded-[4px] text-sm font-medium transition-all cursor-pointer select-none ${
+                          isSelected || isConnected
+                            ? 'bg-[#404249] text-white'
+                            : 'text-[#949BA4] hover:bg-[#35373C] hover:text-[#DBDEE1]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {getChannelIcon(ch.type, 18, isSelected || isConnected ? 'text-[#DBDEE1]' : 'text-[#80848E]')}
+                          <span className="truncate">{ch.name}</span>
                         </div>
 
-                        {/* Connected members tree */}
-                        {participants.length > 0 && (
-                          <div className="pl-6 pr-2 mt-0.5 space-y-0.5 animate-msg-enter">
-                            {participants.map((p) => {
-                              const isSpeaking = p.is_speaking;
-                              const isPeerSharing = Object.values(remoteScreenStreams).some((r) => r.userId === p.user_id) || (p.user_id === currentUser?.id && isScreenSharing);
-
-                              return (
-                                <div
-                                  key={p.user_id}
-                                  className="flex items-center justify-between py-1 px-2 rounded-[4px] hover:bg-[#35373C] transition-colors group/p"
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className={isSpeaking ? 'ring-2 ring-[#23A55A] rounded-full' : ''}>
-                                      <DiscordUserAvatar
-                                        user={p}
-                                        size={22}
-                                        isSpeaking={isSpeaking}
-                                        showStatus={false}
-                                      />
-                                    </div>
-                                    <span className="text-xs text-[#DBDEE1] truncate font-medium">
-                                      {p.display_name || p.username} {p.user_id === currentUser?.id ? '(Você)' : ''}
-                                    </span>
-                                  </div>
-
-                                  <div className="flex items-center gap-1">
-                                    {isPeerSharing && (
-                                      <span className="px-1.5 py-0.2 rounded bg-[#F23F43] text-white text-[9px] font-bold uppercase tracking-wider">
-                                        LIVE
-                                      </span>
-                                    )}
-                                    {p.is_muted && (
-                                      <span className="text-[#F23F43]" title="Microfone mutado">
-                                        <MicOff size={12} />
-                                      </span>
-                                    )}
-                                    {p.is_deafened && (
-                                      <span className="text-[#F23F43]" title="Áudio ensurdecido">
-                                        <Headphones size={12} />
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {ch.is_private ? <Lock size={12} className="text-[#80848E] mr-1" /> : null}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveChannelId(ch.id);
+                              setShowVoiceChatSidebar(true);
+                            }}
+                            className="p-1 hover:bg-[#404249] rounded text-[#949BA4] hover:text-[#DBDEE1] transition-colors opacity-0 group-hover/vch:opacity-100"
+                            title="Abrir Bate-papo de Texto"
+                          >
+                            <MessageSquare size={13} />
+                          </button>
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+
+                      {/* Connected members tree */}
+                      {participants.length > 0 && (
+                        <div className="pl-6 pr-2 mt-0.5 space-y-0.5 animate-msg-enter">
+                          {participants.map((p) => {
+                            const isSpeaking = p.is_speaking;
+                            const isPeerSharing =
+                              Object.values(remoteScreenStreams).some((r) => r.userId === p.user_id) ||
+                              (p.user_id === currentUser?.id && isScreenSharing);
+
+                            return (
+                              <div
+                                key={p.user_id}
+                                className="flex items-center justify-between py-1 px-2 rounded-[4px] hover:bg-[#35373C] transition-colors group/p"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className={isSpeaking ? 'ring-2 ring-[#23A55A] rounded-full' : ''}>
+                                    <DiscordUserAvatar
+                                      user={p}
+                                      size={22}
+                                      isSpeaking={isSpeaking}
+                                      showStatus={false}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-[#DBDEE1] truncate font-medium">
+                                    {p.display_name || p.username} {p.user_id === currentUser?.id ? '(Você)' : ''}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  {isPeerSharing && (
+                                    <span className="px-1.5 py-0.2 rounded bg-[#F23F43] text-white text-[9px] font-bold uppercase tracking-wider">
+                                      LIVE
+                                    </span>
+                                  )}
+                                  {p.is_muted && (
+                                    <span className="text-[#F23F43]" title="Microfone mutado">
+                                      <MicOff size={12} />
+                                    </span>
+                                  )}
+                                  {p.is_deafened && (
+                                    <span className="text-[#F23F43]" title="Áudio ensurdecido">
+                                      <Headphones size={12} />
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                };
+
+                // If server has custom categories
+                if (rawCategories.length > 0) {
+                  const unassignedText = allChannels.filter(
+                    (c) => !c.category_id && (c.type === 'text' || c.type === 'forum' || c.type === 'announcement' || !c.type) && !rawCategories.some((cat) => cat.name === c.category)
+                  );
+                  const unassignedVoice = allChannels.filter(
+                    (c) => !c.category_id && (c.type === 'voice' || c.type === 'stage') && !rawCategories.some((cat) => cat.name === c.category)
+                  );
+
+                  return (
+                    <>
+                      {rawCategories.map((cat) => {
+                        const catChannels = allChannels.filter(
+                          (c) => c.category_id === cat.id || c.category === cat.name
+                        );
+                        const isCollapsed = collapsedCategories[cat.id];
+
+                        return (
+                          <div key={cat.id} onContextMenu={(e) => openCustomContextMenu(e, 'category', cat)}>
+                            <div
+                              className="flex items-center justify-between px-2 mb-1 group cursor-pointer select-none"
+                              onClick={() =>
+                                setCollapsedCategories((prev) => ({
+                                  ...prev,
+                                  [cat.id]: !prev[cat.id],
+                                }))
+                              }
+                            >
+                              <div className="flex items-center gap-1 min-w-0">
+                                <span className="text-[#949BA4] group-hover:text-[#DBDEE1] transition-transform">
+                                  {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                                </span>
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-[#949BA4] group-hover:text-[#DBDEE1] truncate">
+                                  {cat.name}
+                                </span>
+                                {cat.is_private ? <Lock size={12} className="text-[#80848E] ml-1 flex-shrink-0" /> : null}
+                              </div>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setTargetCategoryId(cat.id);
+                                  setNewChannelType('text');
+                                  setShowCreateChannelModal(true);
+                                }}
+                                className="text-[#949BA4] hover:text-[#DBDEE1] p-0.5 transition-colors opacity-0 group-hover:opacity-100"
+                                title="Criar Canal"
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+
+                            {!isCollapsed && (
+                              <div className="space-y-0.5">
+                                {catChannels.map((ch) => renderChannelRow(ch))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {unassignedText.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between px-2 mb-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#949BA4] hover:text-[#DBDEE1] cursor-pointer">
+                              Canais de Texto
+                            </span>
+                            <button
+                              onClick={() => {
+                                setTargetCategoryId(null);
+                                setNewChannelType('text');
+                                setShowCreateChannelModal(true);
+                              }}
+                              className="text-[#949BA4] hover:text-[#DBDEE1] p-0.5 transition-colors"
+                              title="Criar Canal"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                          <div className="space-y-0.5">
+                            {unassignedText.map((ch) => renderChannelRow(ch))}
+                          </div>
+                        </div>
+                      )}
+
+                      {unassignedVoice.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between px-2 mb-1">
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-[#949BA4] hover:text-[#DBDEE1] cursor-pointer">
+                              Canais de Voz
+                            </span>
+                            <button
+                              onClick={() => {
+                                setTargetCategoryId(null);
+                                setNewChannelType('voice');
+                                setShowCreateChannelModal(true);
+                              }}
+                              className="text-[#949BA4] hover:text-[#DBDEE1] p-0.5 transition-colors"
+                              title="Criar Canal de Voz"
+                            >
+                              <Plus size={14} />
+                            </button>
+                          </div>
+                          <div className="space-y-0.5">
+                            {unassignedVoice.map((vch) => renderChannelRow(vch))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                }
+
+                // Default Categories view
+                const textLikeChannels = allChannels.filter(
+                  (c) => c.type === 'text' || c.type === 'forum' || c.type === 'announcement' || !c.type
+                );
+                const voiceLikeChannels = allChannels.filter(
+                  (c) => c.type === 'voice' || c.type === 'stage'
+                );
+
+                return (
+                  <>
+                    {/* Text Channels Category */}
+                    <div>
+                      <div className="flex items-center justify-between px-2 mb-1 group">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#949BA4] hover:text-[#DBDEE1] cursor-pointer">
+                          Canais de Texto
+                        </span>
+                        <button
+                          onClick={() => {
+                            setTargetCategoryId(null);
+                            setNewChannelType('text');
+                            setShowCreateChannelModal(true);
+                          }}
+                          className="text-[#949BA4] hover:text-[#DBDEE1] p-0.5 transition-colors"
+                          title="Criar Canal"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        {textLikeChannels.map((ch) => renderChannelRow(ch))}
+                      </div>
+                    </div>
+
+                    {/* Voice Channels Category */}
+                    <div>
+                      <div className="flex items-center justify-between px-2 mb-1 group">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#949BA4] hover:text-[#DBDEE1] cursor-pointer">
+                          Canais de Voz
+                        </span>
+                        <button
+                          onClick={() => {
+                            setTargetCategoryId(null);
+                            setNewChannelType('voice');
+                            setShowCreateChannelModal(true);
+                          }}
+                          className="text-[#949BA4] hover:text-[#DBDEE1] p-0.5 transition-colors"
+                          title="Criar Canal de Voz"
+                        >
+                          <Plus size={14} />
+                        </button>
+                      </div>
+
+                      <div className="space-y-0.5">
+                        {voiceLikeChannels.map((vch) => renderChannelRow(vch))}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </>
         )}
@@ -6360,7 +6657,7 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <Hash size={20} className="text-[#80848E]" />
+                    {getChannelIcon(currentChannel?.type, 20, 'text-[#80848E]')}
                     <span className="font-bold text-sm text-[#F2F3F5] truncate">
                       {currentChannel?.name}
                     </span>
@@ -6482,7 +6779,7 @@ export default function App() {
                   {activeServerId === 'dms' ? (
                     <DiscordUserAvatar user={activeDmFriend} size={48} showStatus={false} />
                   ) : (
-                    <Hash size={40} />
+                    getChannelIcon(currentChannel?.type, 40, 'text-white')
                   )}
                 </div>
                 <h3 className="text-3xl font-bold text-[#F2F3F5]">
@@ -7204,55 +7501,346 @@ export default function App() {
       {showCreateChannelModal && (
         <div
           className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-msg-enter"
-          onClick={() => setShowCreateChannelModal(false)}
+          onClick={() => {
+            setShowCreateChannelModal(false);
+            setIsChannelPrivate(false);
+            setShowChannelEmojiPicker(false);
+          }}
         >
           <div
-            className="w-96 bg-[#313338] text-[#DBDEE1] rounded-[5px] shadow-2xl p-6 border border-[#1F2023]"
+            className="w-full max-w-[460px] bg-[#313338] text-[#DBDEE1] rounded-[8px] shadow-2xl p-6 border border-[#232428]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-[#F2F3F5]">
-                Criar Canal de {newChannelType === 'voice' ? 'Voz' : 'Texto'}
-              </h3>
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4">
+              <h2 className="text-xl font-bold text-[#F2F3F5]">Criar canal</h2>
               <button
-                onClick={() => setShowCreateChannelModal(false)}
-                className="text-[#949BA4] hover:text-white"
+                onClick={() => {
+                  setShowCreateChannelModal(false);
+                  setIsChannelPrivate(false);
+                  setShowChannelEmojiPicker(false);
+                }}
+                className="text-[#949BA4] hover:text-white p-1 rounded transition-colors"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
             <form onSubmit={handleCreateChannel} className="space-y-4">
+              {/* Channel Type Selector */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] mb-2.5">
+                  Tipo de canal
+                </label>
+
+                <div className="space-y-1.5">
+                  {[
+                    {
+                      id: 'text',
+                      title: 'Texto',
+                      icon: Hash,
+                      desc: 'Envie mensagens, imagens, GIFs, emojis, opiniões e piadas',
+                    },
+                    {
+                      id: 'voice',
+                      title: 'Voz',
+                      icon: Volume2,
+                      desc: 'Passe tempo com a turma com voz, vídeo e compartilhamento de tela',
+                    },
+                    {
+                      id: 'forum',
+                      title: 'Fórum',
+                      icon: MessagesSquare,
+                      desc: 'Crie um espaço para discussões organizadas',
+                    },
+                    {
+                      id: 'announcement',
+                      title: 'Announcement',
+                      icon: Megaphone,
+                      desc: 'Atualizações importantes para pessoas dentro e fora do servidor',
+                    },
+                    {
+                      id: 'stage',
+                      title: 'Palco',
+                      icon: Radio,
+                      desc: 'Ofereça eventos, painéis, e P&Rs para uma plateia',
+                    },
+                  ].map((t) => {
+                    const isSelected = newChannelType === t.id;
+                    const IconComp = t.icon;
+
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() => setNewChannelType(t.id)}
+                        className={`flex items-center gap-3.5 p-3 rounded-[6px] cursor-pointer transition-colors ${
+                          isSelected
+                            ? 'bg-[#2B2D31] text-white'
+                            : 'bg-[#2B2D31]/40 hover:bg-[#35373C]/60 text-[#DBDEE1]'
+                        }`}
+                      >
+                        {/* Radio indicator */}
+                        <div className="flex-shrink-0">
+                          <div
+                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                              isSelected
+                                ? 'border-[#5865F2] bg-[#5865F2]'
+                                : 'border-[#80848E] bg-[#1E1F22]'
+                            }`}
+                          >
+                            {isSelected && (
+                              <div className="w-2 h-2 rounded-full bg-white" />
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <IconComp
+                              size={18}
+                              className={isSelected ? 'text-white' : 'text-[#949BA4]'}
+                            />
+                            <span className="font-semibold text-sm text-[#F2F3F5]">
+                              {t.title}
+                            </span>
+                          </div>
+                          <p className="text-xs text-[#949BA4] mt-0.5 leading-snug">
+                            {t.desc}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Channel Name */}
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] mb-2">
-                  Nome do Canal
+                  Nome do canal
                 </label>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-[3px] bg-[#1E1F22] border border-[#1E1F22] focus-within:border-[#5865F2] transition-colors">
-                  {newChannelType === 'voice' ? <Volume2 size={16} className="text-[#80848E]" /> : <Hash size={16} className="text-[#80848E]" />}
+                <div className="relative flex items-center gap-2 px-3 py-2 rounded-[4px] bg-[#1E1F22] border border-[#1E1F22] focus-within:border-[#5865F2] focus-within:ring-1 focus-within:ring-[#5865F2] transition-colors">
+                  {getChannelIcon(newChannelType, 18, 'text-[#80848E] flex-shrink-0')}
                   <input
                     type="text"
                     required
                     value={newChannelName}
-                    onChange={(e) => setNewChannelName(e.target.value)}
+                    onChange={(e) =>
+                      setNewChannelName(e.target.value.toLowerCase().replace(/\s+/g, '-'))
+                    }
                     placeholder="novo-canal"
                     className="flex-1 bg-transparent border-none outline-none text-sm text-[#F2F3F5] placeholder-[#80848E]"
+                    autoFocus
                   />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowChannelEmojiPicker((p) => !p)}
+                      className="text-[#949BA4] hover:text-white p-1 rounded transition-colors"
+                      title="Inserir Emoji"
+                    >
+                      <Smile size={18} />
+                    </button>
+                    {showChannelEmojiPicker && (
+                      <div className="absolute right-0 bottom-8 bg-[#111214] border border-[#232428] rounded-[6px] p-2 shadow-2xl z-50 flex gap-1.5 animate-msg-enter">
+                        {['💬', '🎮', '🎵', '📢', '🔥', '✨', '🚀', '📌'].map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              setNewChannelName((prev) => (prev ? `${prev}-${emoji}` : emoji));
+                              setShowChannelEmojiPicker(false);
+                            }}
+                            className="hover:scale-125 transition-transform text-base p-1"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              {/* Private Channel Toggle */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Lock size={16} className="text-[#DBDEE1]" />
+                    <span className="font-semibold text-sm text-[#F2F3F5]">Canal privado</span>
+                  </div>
+
+                  {/* Switch Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setIsChannelPrivate((p) => !p)}
+                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out cursor-pointer ${
+                      isChannelPrivate ? 'bg-[#5865F2]' : 'bg-[#4E5058]'
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
+                        isChannelPrivate ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="text-xs text-[#949BA4] mt-1.5 leading-snug">
+                  Somente membros e cargos selecionados poderão visualizar esse canal.
+                </p>
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#232428]">
                 <button
                   type="button"
-                  onClick={() => setShowCreateChannelModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-[#949BA4] hover:text-white"
+                  onClick={() => {
+                    setShowCreateChannelModal(false);
+                    setIsChannelPrivate(false);
+                    setShowChannelEmojiPicker(false);
+                  }}
+                  className="px-5 py-2.5 rounded-[4px] bg-[#2B2D31] hover:bg-[#35373C] text-white text-sm font-medium transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-[3px] bg-[#5865F2] hover:bg-[#4752C4] text-white text-xs font-semibold shadow-sm transition-colors"
+                  disabled={!newChannelName.trim()}
+                  className="px-6 py-2.5 rounded-[4px] bg-[#5865F2] hover:bg-[#4752C4] disabled:opacity-50 text-white text-sm font-semibold shadow-md transition-colors"
                 >
-                  Criar Canal
+                  Criar canal
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 6.1 CREATE CATEGORY MODAL */}
+      {/* ========================================================================= */}
+      {showCreateCategoryModal && (
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-msg-enter"
+          onClick={() => {
+            setShowCreateCategoryModal(false);
+            setIsCategoryPrivate(false);
+            setShowCategoryEmojiPicker(false);
+          }}
+        >
+          <div
+            className="w-full max-w-[460px] bg-[#313338] text-[#DBDEE1] rounded-[8px] shadow-2xl p-6 border border-[#232428]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4">
+              <h2 className="text-xl font-bold text-[#F2F3F5]">Criar categoria</h2>
+              <button
+                onClick={() => {
+                  setShowCreateCategoryModal(false);
+                  setIsCategoryPrivate(false);
+                  setShowCategoryEmojiPicker(false);
+                }}
+                className="text-[#949BA4] hover:text-white p-1 rounded transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCategory} className="space-y-4">
+              {/* Category Name */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-[#B5BAC1] mb-2">
+                  Nome da categoria
+                </label>
+                <div className="relative flex items-center gap-2 px-3 py-2 rounded-[4px] bg-[#1E1F22] border border-[#1E1F22] focus-within:border-[#5865F2] focus-within:ring-1 focus-within:ring-[#5865F2] transition-colors">
+                  <input
+                    type="text"
+                    required
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    placeholder="Nova Categoria"
+                    className="flex-1 bg-transparent border-none outline-none text-sm text-[#F2F3F5] placeholder-[#80848E]"
+                    autoFocus
+                  />
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryEmojiPicker((p) => !p)}
+                      className="text-[#949BA4] hover:text-white p-1 rounded transition-colors"
+                      title="Inserir Emoji"
+                    >
+                      <Smile size={18} />
+                    </button>
+                    {showCategoryEmojiPicker && (
+                      <div className="absolute right-0 bottom-8 bg-[#111214] border border-[#232428] rounded-[6px] p-2 shadow-2xl z-50 flex gap-1.5 animate-msg-enter">
+                        {['📁', '🎮', '💬', '📢', '🔥', '✨', '⚡', '🏆'].map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              setNewCategoryName((prev) => (prev ? `${prev} ${emoji}` : emoji));
+                              setShowCategoryEmojiPicker(false);
+                            }}
+                            className="hover:scale-125 transition-transform text-base p-1"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Private Category Toggle */}
+              <div className="pt-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Lock size={16} className="text-[#DBDEE1]" />
+                    <span className="font-semibold text-sm text-[#F2F3F5]">Categoria privada</span>
+                  </div>
+
+                  {/* Switch Toggle */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryPrivate((p) => !p)}
+                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out cursor-pointer ${
+                      isCategoryPrivate ? 'bg-[#5865F2]' : 'bg-[#4E5058]'
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
+                        isCategoryPrivate ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+                <p className="text-xs text-[#949BA4] mt-1.5 leading-snug">
+                  Ao tornar uma categoria privada, somente membros e cargos selecionados poderão visualizar essa categoria. Canais vinculados a esta categoria seguirão esta configuração automaticamente.
+                </p>
+              </div>
+
+              {/* Footer Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#232428]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateCategoryModal(false);
+                    setIsCategoryPrivate(false);
+                    setShowCategoryEmojiPicker(false);
+                  }}
+                  className="px-5 py-2.5 rounded-[4px] bg-[#2B2D31] hover:bg-[#35373C] text-white text-sm font-medium transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!newCategoryName.trim()}
+                  className="px-6 py-2.5 rounded-[4px] bg-[#5865F2] hover:bg-[#4752C4] disabled:opacity-50 text-white text-sm font-semibold shadow-md transition-colors"
+                >
+                  Criar categoria
                 </button>
               </div>
             </form>
@@ -7573,6 +8161,55 @@ export default function App() {
                 className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[2px] hover:bg-[#35373C] text-[#949BA4] hover:text-white transition-colors text-left"
               >
                 <span>Copiar ID do Canal</span>
+                <Copy size={13} />
+              </button>
+            </div>
+          )}
+
+          {/* CATEGORY CONTEXT MENU */}
+          {contextMenu.type === 'category' && contextMenu.target && (
+            <div className="space-y-0.5">
+              <div className="font-bold text-xs text-[#F2F3F5] px-2.5 py-1.5 truncate border-b border-[#232428] mb-1">
+                📁 {contextMenu.target.name}
+              </div>
+
+              <button
+                onClick={() => {
+                  setTargetCategoryId(contextMenu.target.id);
+                  setNewChannelType('text');
+                  setShowCreateChannelModal(true);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[2px] hover:bg-[#5865F2] hover:text-white transition-colors text-left"
+              >
+                <span>Criar Canal</span>
+                <Plus size={14} />
+              </button>
+
+              <button
+                onClick={() => {
+                  handleDeleteCategory(contextMenu.target.id);
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[2px] hover:bg-[#DA373C] hover:text-white text-[#F23F43] transition-colors text-left"
+              >
+                <span>Excluir Categoria</span>
+                <Trash2 size={14} />
+              </button>
+
+              <div className="my-1 h-[1px] bg-[#232428]" />
+
+              <button
+                onClick={() => {
+                  if (contextMenu.target.id) {
+                    navigator.clipboard.writeText(String(contextMenu.target.id));
+                    triggerToast('ID da Categoria Copiado!');
+                  }
+                  setContextMenu(null);
+                }}
+                className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-[2px] hover:bg-[#35373C] text-[#949BA4] hover:text-white transition-colors text-left"
+              >
+                <span>Copiar ID da Categoria</span>
                 <Copy size={13} />
               </button>
             </div>

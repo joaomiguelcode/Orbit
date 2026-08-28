@@ -162,6 +162,24 @@ async function initDatabaseMigrations() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `).catch(() => {});
 
+    // Server Categories table
+    await query(`
+      CREATE TABLE IF NOT EXISTS server_categories (
+        id VARCHAR(50) PRIMARY KEY,
+        server_id VARCHAR(50) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        is_private BOOLEAN DEFAULT FALSE,
+        position INT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX (server_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `).catch(() => {});
+
+    // Channels table migrations
+    await query(`ALTER TABLE channels ADD COLUMN is_private BOOLEAN DEFAULT FALSE`).catch(() => {});
+    await query(`ALTER TABLE channels ADD COLUMN category_id VARCHAR(50) DEFAULT NULL`).catch(() => {});
+    await query(`ALTER TABLE channels MODIFY COLUMN type VARCHAR(50) DEFAULT 'text'`).catch(() => {});
+
     console.log('[DB] Enhanced database tables and migrations verified successfully.');
   } catch (e) {
     console.log('[DB] Migration log:', e.message);
@@ -583,6 +601,7 @@ app.get('/api/servers/:serverId', async (req, res) => {
     if (!serverData) return res.status(404).json({ error: 'Server not found' });
 
     const channels = await query('SELECT * FROM channels WHERE server_id = ? ORDER BY position ASC, created_at ASC', [serverId]);
+    const categories = await query('SELECT * FROM server_categories WHERE server_id = ? ORDER BY position ASC, created_at ASC', [serverId]).catch(() => []);
     const roles = await query('SELECT * FROM server_roles WHERE server_id = ? ORDER BY position ASC, created_at ASC', [serverId]);
     const memberRoles = await query(
       `SELECT mr.*, sr.name as role_name, sr.color as role_color, sr.hoist, sr.position as role_position, sr.icon as role_icon 
@@ -630,6 +649,7 @@ app.get('/api/servers/:serverId', async (req, res) => {
       success: true,
       server: serverData,
       channels,
+      categories,
       roles,
       members,
       voiceSessions
@@ -640,21 +660,59 @@ app.get('/api/servers/:serverId', async (req, res) => {
   }
 });
 
+// Create Category inside Server
+app.post('/api/servers/:serverId/categories', async (req, res) => {
+  const { serverId } = req.params;
+  const { name, is_private } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Category name is required' });
+
+  const categoryId = `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+  try {
+    await query(
+      'INSERT INTO server_categories (id, server_id, name, is_private, position) VALUES (?, ?, ?, ?, 10)',
+      [categoryId, serverId, name.trim(), is_private ? 1 : 0]
+    );
+
+    const [newCategory] = await query('SELECT * FROM server_categories WHERE id = ?', [categoryId]);
+    io.emit('category_created', { serverId, category: newCategory });
+    res.json({ success: true, category: newCategory });
+  } catch (err) {
+    console.error('Create category error:', err);
+    res.status(500).json({ error: 'Failed to create category' });
+  }
+});
+
+// Delete Category
+app.delete('/api/servers/:serverId/categories/:categoryId', async (req, res) => {
+  const { serverId, categoryId } = req.params;
+  try {
+    await query('DELETE FROM server_categories WHERE id = ? AND server_id = ?', [categoryId, serverId]);
+    await query('UPDATE channels SET category_id = NULL WHERE category_id = ? AND server_id = ?', [categoryId, serverId]);
+    io.emit('category_deleted', { serverId, categoryId });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Delete category error:', err);
+    res.status(500).json({ error: 'Failed to delete category' });
+  }
+});
+
 // Create Channel inside Server
 app.post('/api/servers/:serverId/channels', async (req, res) => {
   const { serverId } = req.params;
-  const { name, topic, type } = req.body;
-  if (!name) return res.status(400).json({ error: 'Channel name is required' });
+  const { name, topic, type, is_private, category_id, category } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Channel name is required' });
 
   const channelId = `ch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-  const channelType = type === 'voice' ? 'voice' : 'text';
-  const category = channelType === 'voice' ? 'VOICE CHANNELS' : 'TEXT CHANNELS';
-  const cleanName = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const validTypes = ['text', 'voice', 'forum', 'announcement', 'stage'];
+  const channelType = validTypes.includes(type) ? type : 'text';
+  const defaultCategory = channelType === 'voice' ? 'VOICE CHANNELS' : (channelType === 'stage' ? 'PALCO' : 'TEXT CHANNELS');
+  const catName = category || defaultCategory;
+  const cleanName = name.trim().toLowerCase().replace(/\s+/g, '-');
 
   try {
     await query(
-      'INSERT INTO channels (id, server_id, name, topic, type, category, position) VALUES (?, ?, ?, ?, ?, ?, 10)',
-      [channelId, serverId, cleanName, topic || '', channelType, category]
+      'INSERT INTO channels (id, server_id, name, topic, type, category, category_id, is_private, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 10)',
+      [channelId, serverId, cleanName, topic || '', channelType, catName, category_id || null, is_private ? 1 : 0]
     );
 
     const [newChannel] = await query('SELECT * FROM channels WHERE id = ?', [channelId]);
