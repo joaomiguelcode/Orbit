@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Orbit HQ — Community Desktop Chat</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'shell': '#121319',
+            'panel': '#191b24',
+            'chat': '#1c1e28',
+            'raised': '#23253a',
+            'dock': '#14151c',
+            'line': '#232532',
+            'brand': '#7c6ff2',
+            'signal': '#45d6b8',
+            'spark': '#f2a25c',
+            'text-hi': '#eef0f8',
+            'text-mid': '#9294ab',
+            'text-low': '#585a70',
+            'idle': '#f2c25c',
+            'dnd': '#f2705c',
+          },
+          fontFamily: {
+            'space': ['"Space Grotesk"', 'sans-serif'],
+            'sans': ['Inter', 'sans-serif'],
+            'mono': ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React and Babel CDN for standalone single-file preview -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    :root {
+      --bg-shell: #121319;
+      --bg-panel: #191b24;
+      --bg-chat: #1c1e28;
+      --bg-raised: #23253a;
+      --bg-dock: #14151c;
+      --line: #232532;
+      --brand: #7c6ff2;
+      --signal: #45d6b8;
+      --spark: #f2a25c;
+      --text-hi: #eef0f8;
+      --text-mid: #9294ab;
+      --text-low: #585a70;
+      --idle: #f2c25c;
+      --dnd: #f2705c;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-shell);
+      color: var(--text-hi);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+      user-select: none;
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #282a3c; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #363952; }
+
+    @keyframes orbitPulse1 {
+      0% { transform: scale(1); opacity: 0.85; }
+      70% { transform: scale(1.32); opacity: 0.15; }
+      100% { transform: scale(1.42); opacity: 0; }
+    }
+    @keyframes orbitPulse2 {
+      0% { transform: scale(1); opacity: 0.7; }
+      50% { transform: scale(1.2); opacity: 0.3; }
+      100% { transform: scale(1.3); opacity: 0; }
+    }
+    .pulse-ring-1 { animation: orbitPulse1 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+    .pulse-ring-2 { animation: orbitPulse2 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite 0.4s; }
+
+    @keyframes signalDotPulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.25); opacity: 0.6; }
+    }
+    .signal-dot-anim { animation: signalDotPulse 2s ease-in-out infinite; }
+
+    @keyframes msgEnter {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-msg-enter { animation: msgEnter 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+    @keyframes typingBounce {
+      0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+      30% { transform: translateY(-4px); opacity: 1; }
+    }
+    .typing-dot-1 { animation: typingBounce 1.4s infinite ease-in-out; }
+    .typing-dot-2 { animation: typingBounce 1.4s infinite ease-in-out 0.2s; }
+    .typing-dot-3 { animation: typingBounce 1.4s infinite ease-in-out 0.4s; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const TOKENS = {
+      bgShell: '#121319',
+      bgPanel: '#191b24',
+      bgChat: '#1c1e28',
+      bgRaised: '#23253a',
+      bgDock: '#14151c',
+      line: '#232532',
+      brand: '#7c6ff2',
+      signal: '#45d6b8',
+      spark: '#f2a25c',
+      textHi: '#eef0f8',
+      textMid: '#9294ab',
+      textLow: '#585a70',
+      idle: '#f2c25c',
+      dnd: '#f2705c',
+    };
+
+    function OrbitMotifIcon({ size = 26, className = '' }) {
+      return (
+        <svg width={size} height={size} viewBox="0 0 26 26" fill="none" className={className}>
+          <circle cx="13" cy="13" r="11" stroke={TOKENS.brand} strokeWidth="1.8" strokeOpacity="0.35" />
+          <circle cx="13" cy="13" r="6.5" stroke={TOKENS.brand} strokeWidth="1.8" strokeOpacity="0.7" />
+          <circle cx="13" cy="13" r="2.8" fill={TOKENS.brand} />
+        </svg>
+      );
+    }
+
+    const USER_COLORS = {
+      mira: { from: '#8b5cf6', to: '#ec4899', nameColor: '#d8b4fe', role: 'owner', roleLabel: 'Orbit Lead', status: 'online', tag: '#0001', bio: 'Building the next evolution of team workspaces ✨' },
+      dez: { from: '#3b82f6', to: '#06b6d4', nameColor: '#93c5fd', role: 'mod', roleLabel: 'Core Eng', status: 'online', tag: '#1024', bio: 'Rust, WebGL and audio pipelines.' },
+      you: { from: '#f59e0b', to: '#f2a25c', nameColor: '#f2a25c', role: 'member', roleLabel: 'Creator', status: 'online', tag: '#4471', bio: 'Designing interfaces with precision.' },
+      kip: { from: '#10b981', to: '#14b8a6', nameColor: '#6ee7b7', role: 'member', roleLabel: 'UI Designer', status: 'idle', tag: '#2088', bio: 'Obsessed with micro-interactions and kerning.' },
+      sable: { from: '#ef4444', to: '#f43f5e', nameColor: '#fda4af', role: 'member', roleLabel: 'Backend Dev', status: 'dnd', tag: '#9942', bio: 'Do not disturb — compiling shaders ⚡' },
+      tobin: { from: '#64748b', to: '#475569', nameColor: '#94a3b8', role: 'member', roleLabel: 'Community', status: 'offline', tag: '#3319', bio: 'AFK exploring the mountains.' }
+    };
+
+    function StatusIndicator({ status, size = 10, border = true }) {
+      let color = TOKENS.textLow;
+      if (status === 'online') color = TOKENS.signal;
+      if (status === 'idle') color = TOKENS.idle;
+      if (status === 'dnd') color = TOKENS.dnd;
+
+      return (
+        <span
+          className="absolute bottom-0 right-0 rounded-full flex items-center justify-center pointer-events-none"
+          style={{
+            width: `${size}px`,
+            height: `${size}px`,
+            backgroundColor: color,
+            boxShadow: border ? `0 0 0 2.5px ${TOKENS.bgPanel}` : 'none',
+          }}
+        >
+          {status === 'dnd' && <span className="w-1.5 h-0.5 bg-[#121319] rounded-full" />}
+          {status === 'idle' && <span className="w-1 h-1 rounded-full bg-[#191b24] absolute -top-0.5 -left-0.5" />}
+        </span>
+      );
+    }
+
+    function UserAvatar({ username, size = 36, isSpeaking = false, showStatus = true, status = null }) {
+      const user = USER_COLORS[username] || { from: '#6366f1', to: '#a855f7', nameColor: '#eef0f8', status: 'online', role: 'member' };
+      const currentStatus = status || user.status;
+      const initial = username.charAt(0).toUpperCase();
+
+      return (
+        <div className="relative flex items-center justify-center flex-shrink-0" style={{ width: `${size}px`, height: `${size}px` }}>
+          {isSpeaking && (
+            <>
+              <div className="absolute rounded-full pointer-events-none pulse-ring-1" style={{ inset: '-5px', border: `2px solid ${TOKENS.signal}` }} />
+              <div className="absolute rounded-full pointer-events-none pulse-ring-2" style={{ inset: '-9px', border: `1.5px solid ${TOKENS.signal}` }} />
+            </>
+          )}
+          <div
+            className="w-full h-full rounded-full flex items-center justify-center font-space font-bold select-none text-white shadow-inner transition-transform duration-150"
+            style={{
+              background: `linear-gradient(135deg, ${user.from} 0%, ${user.to} 100%)`,
+              fontSize: `${Math.max(11, Math.round(size * 0.42))}px`,
+              boxShadow: isSpeaking ? `0 0 10px ${TOKENS.signal}88, inset 0 1px 2px rgba(255,255,255,0.4)` : 'inset 0 1px 1.5px rgba(255,255,255,0.3)',
+            }}
+          >
+            {initial}
+          </div>
+          {showStatus && <StatusIndicator status={currentStatus} size={Math.max(9, Math.round(size * 0.3))} />}
+        </div>
+      );
+    }
+
+    const TEXT_CHANNELS = [
+      { id: 'general', name: 'general', topic: 'Day to day chatter and quick questions.', unread: 0 },
+      { id: 'showcase', name: 'showcase', topic: 'Share work-in-progress screenshots and builds.', unread: 3 },
+      { id: 'bug-reports', name: 'bug-reports', topic: 'File it here before it becomes a fire.', unread: 0 },
+    ];
+
+    const INITIAL_MESSAGES = {
+      general: [
+        { id: 'm1', author: 'mira', timestamp: 'Today at 7:38 PM', text: 'pushed the new onboarding flow — someone want to eyeball it before I merge?', reactions: [] },
+        { id: 'm2', author: 'mira', timestamp: 'Today at 7:39 PM', text: 'branch is feat/onboarding-v2, nothing scary in there', reactions: [] },
+        { id: 'm3', author: 'dez', timestamp: 'Today at 7:41 PM', text: 'on it — pulling the branch now', reactions: [{ emoji: '👀', count: 2, users: ['dez', 'kip'] }] },
+        { id: 'm4', author: 'you', timestamp: 'Today at 7:42 PM', text: "the empty state copy on the dashboard needs a redo, it still says 'no data' lol", reactions: [] },
+        { id: 'm5', author: 'mira', timestamp: 'Today at 7:43 PM', text: 'lol yeah noted, fixing that in the same PR', reactions: [] },
+        { id: 'm6', author: 'dez', timestamp: 'Today at 7:45 PM', text: 'looks clean, approving now', reactions: [{ emoji: '✅', count: 1, users: ['dez'] }, { emoji: '🎉', count: 3, users: ['mira', 'dez', 'you'] }] },
+      ],
+      showcase: [
+        { id: 's1', author: 'kip', timestamp: 'Today at 5:12 PM', text: 'Dropped the latest Figma frame for Orbit design system tokens v2!', reactions: [{ emoji: '🔥', count: 4, users: ['mira', 'dez', 'you', 'sable'] }] },
+        { id: 's2', author: 'dez', timestamp: 'Today at 5:20 PM', text: 'The concentric orbit motif looks so crisp on OLED displays.', reactions: [{ emoji: '✨', count: 3, users: ['mira', 'kip', 'you'] }] },
+        { id: 's3', author: 'you', timestamp: 'Today at 5:45 PM', text: 'Just finished prototyping the voice speaking pulse rings — buttery smooth 60fps.', reactions: [{ emoji: '🚀', count: 2, users: ['dez', 'kip'] }] }
+      ],
+      'bug-reports': [
+        { id: 'b1', author: 'sable', timestamp: 'Yesterday at 9:15 PM', text: 'WebSocket reconnect jitter when switching networks on macOS has been resolved.', reactions: [{ emoji: '🙌', count: 2, users: ['mira', 'dez'] }] }
+      ]
+    };
+
+    const MEMBERS_LIST = [
+      { username: 'mira', name: 'mira', status: 'online', role: 'owner' },
+      { username: 'dez', name: 'dez', status: 'online', role: 'mod' },
+      { username: 'you', name: 'you', status: 'online', role: 'member' },
+      { username: 'kip', name: 'kip', status: 'idle', role: 'member' },
+      { username: 'sable', name: 'sable', status: 'dnd', role: 'member' },
+      { username: 'tobin', name: 'tobin', status: 'offline', role: 'member' },
+    ];
+
+    function App() {
+      const [activeChannelId, setActiveChannelId] = useState('general');
+      const [channels, setChannels] = useState(TEXT_CHANNELS);
+      const [messagesByChannel, setMessagesByChannel] = useState(INITIAL_MESSAGES);
+      const [messageInput, setMessageInput] = useState('');
+      const [connectedVoiceChannel, setConnectedVoiceChannel] = useState('Lounge');
+      const [isSpeakingMira, setIsSpeakingMira] = useState(true);
+      const [isMuted, setIsMuted] = useState(false);
+      const [isDeafened, setIsDeafened] = useState(false);
+      const [showMemberSidebar, setShowMemberSidebar] = useState(true);
+      const [selectedProfileUser, setSelectedProfileUser] = useState(null);
+      const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+      const [showPinnedDrawer, setShowPinnedDrawer] = useState(false);
+      const [searchQuery, setSearchQuery] = useState('');
+      const [showNotificationToast, setShowNotificationToast] = useState(false);
+      const [toastMessage, setToastMessage] = useState('');
+
+      const messagesEndRef = useRef(null);
+      const inputRef = useRef(null);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, [messagesByChannel, activeChannelId]);
+
+      useEffect(() => {
+        const interval = setInterval(() => {
+          setIsSpeakingMira(prev => !prev);
+        }, 4500);
+        return () => clearInterval(interval);
+      }, []);
+
+      const triggerToast = (msg) => {
+        setToastMessage(msg);
+        setShowNotificationToast(true);
+        setTimeout(() => setShowNotificationToast(false), 3000);
+      };
+
+      const handleChannelSelect = (channelId) => {
+        setActiveChannelId(channelId);
+        setChannels(prev => prev.map(ch => ch.id === channelId ? { ...ch, unread: 0 } : ch));
+      };
+
+      const handleVoiceChannelToggle = (channelName) => {
+        if (connectedVoiceChannel === channelName) {
+          setConnectedVoiceChannel(null);
+          triggerToast(`Disconnected from ${channelName}`);
+        } else {
+          setConnectedVoiceChannel(channelName);
+          triggerToast(`Connected to voice channel #${channelName}`);
+        }
+      };
+
+      const handleSendMessage = (e) => {
+        e?.preventDefault();
+        if (!messageInput.trim()) return;
+
+        const newMessage = {
+          id: `msg-${Date.now()}`,
+          author: 'you',
+          timestamp: 'Today at ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: messageInput.trim(),
+          reactions: [],
+        };
+
+        setMessagesByChannel(prev => ({
+          ...prev,
+          [activeChannelId]: [...(prev[activeChannelId] || []), newMessage],
+        }));
+
+        setMessageInput('');
+        setShowEmojiPicker(false);
+      };
+
+      const handleToggleReaction = (msgId, emoji) => {
+        setMessagesByChannel(prev => {
+          const currentList = prev[activeChannelId] || [];
+          const updated = currentList.map(msg => {
+            if (msg.id !== msgId) return msg;
+            let reactions = [...(msg.reactions || [])];
+            const existingIdx = reactions.findIndex(r => r.emoji === emoji);
+
+            if (existingIdx > -1) {
+              const current = reactions[existingIdx];
+              const hasUserReacted = current.users.includes('you');
+              if (hasUserReacted) {
+                const newUsers = current.users.filter(u => u !== 'you');
+                if (newUsers.length === 0) {
+                  reactions.splice(existingIdx, 1);
+                } else {
+                  reactions[existingIdx] = { ...current, count: current.count - 1, users: newUsers };
+                }
+              } else {
+                reactions[existingIdx] = { ...current, count: current.count + 1, users: [...current.users, 'you'] };
+              }
+            } else {
+              reactions.push({ emoji, count: 1, users: ['you'] });
+            }
+            return { ...msg, reactions };
+          });
+          return { ...prev, [activeChannelId]: updated };
+        });
+      };
+
+      const activeChannel = channels.find(c => c.id === activeChannelId) || channels[0];
+      const activeMessages = (messagesByChannel[activeChannelId] || []).filter(m =>
+        searchQuery ? m.text.toLowerCase().includes(searchQuery.toLowerCase()) : true
+      );
+
+      const onlineMembers = MEMBERS_LIST.filter(m => m.status === 'online');
+      const idleMembers = MEMBERS_LIST.filter(m => m.status === 'idle');
+      const dndMembers = MEMBERS_LIST.filter(m => m.status === 'dnd');
+      const offlineMembers = MEMBERS_LIST.filter(m => m.status === 'offline');
+
+      return (
+        <div className="flex h-screen w-screen overflow-hidden font-sans select-none" style={{ backgroundColor: TOKENS.bgShell, color: TOKENS.textHi }}>
+          {showNotificationToast && (
+            <div className="fixed top-4 right-6 z-50 flex items-center gap-3 px-4 py-2.5 rounded-xl shadow-2xl border text-sm font-medium animate-msg-enter backdrop-blur-md" style={{ backgroundColor: 'rgba(35, 37, 58, 0.92)', borderColor: TOKENS.brand, color: TOKENS.textHi }}>
+              <span className="text-[#7c6ff2]">✨</span>
+              <span>{toastMessage}</span>
+            </div>
+          )}
+
+          {/* 1. CHANNELS SIDEBAR (248px) */}
+          <aside className="w-[248px] flex-shrink-0 flex flex-col h-full border-r relative z-10" style={{ backgroundColor: TOKENS.bgPanel, borderColor: TOKENS.line }}>
+            {/* Brand Header (64px) */}
+            <header className="h-16 px-4 flex items-center justify-between border-b cursor-pointer transition-colors duration-150 group" style={{ borderColor: TOKENS.line }} onClick={() => triggerToast('Orbit HQ · Single-server community')}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex-shrink-0 group-hover:scale-105 transition-transform duration-200">
+                  <OrbitMotifIcon size={26} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <h1 className="font-space font-semibold text-[14.5px] leading-tight truncate tracking-tight text-[#eef0f8] group-hover:text-white" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                    Orbit HQ
+                  </h1>
+                  <span className="font-mono text-[10.5px] tracking-tight truncate mt-0.5" style={{ fontFamily: "'JetBrains Mono', monospace", color: TOKENS.textLow }}>
+                    6 members · 3 online
+                  </span>
+                </div>
+              </div>
+              <span className="text-[#9294ab] group-hover:text-[#eef0f8] text-xs">▼</span>
+            </header>
+
+            {/* Channels List */}
+            <div className="flex-1 overflow-y-auto px-2 py-3 space-y-5">
+              {/* Text Channels */}
+              <div>
+                <div className="flex items-center justify-between px-2 mb-1.5">
+                  <span className="font-space font-semibold text-[11px] tracking-widest uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", color: TOKENS.textLow }}>
+                    Text
+                  </span>
+                  <button aria-label="Create text channel" onClick={() => triggerToast('Text channels are fixed for Orbit HQ')} className="text-[#585a70] hover:text-[#eef0f8] p-0.5 rounded transition-colors">
+                    +
+                  </button>
+                </div>
+                <div className="space-y-0.5">
+                  {channels.map((ch) => {
+                    const isActive = ch.id === activeChannelId;
+                    return (
+                      <button
+                        key={ch.id}
+                        onClick={() => handleChannelSelect(ch.id)}
+                        className={`w-full group flex items-center justify-between px-2.5 py-1.5 rounded-md text-sm font-medium transition-all duration-150 relative ${
+                          isActive ? 'bg-[#23253a]' : 'hover:bg-[#1f212e] text-[#9294ab] hover:text-[#eef0f8]'
+                        }`}
+                        style={{ color: isActive ? '#c9c3ff' : undefined }}
+                      >
+                        {isActive && (
+                          <span className="absolute -left-2 top-1 bottom-1 w-[3px] rounded-r-full" style={{ backgroundColor: TOKENS.brand }} />
+                        )}
+                        <div className="flex items-center gap-2 min-w-0 truncate">
+                          <span className={isActive ? 'text-[#7c6ff2]' : 'text-[#585a70] group-hover:text-[#9294ab]'}>#</span>
+                          <span className="truncate">{ch.name}</span>
+                        </div>
+                        {ch.unread > 0 && (
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: TOKENS.spark, color: '#121319', fontFamily: "'JetBrains Mono', monospace" }}>
+                            {ch.unread}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Voice Channels */}
+              <div>
+                <div className="flex items-center justify-between px-2 mb-1.5">
+                  <span className="font-space font-semibold text-[11px] tracking-widest uppercase" style={{ fontFamily: "'Space Grotesk', sans-serif", color: TOKENS.textLow }}>
+                    Voice
+                  </span>
+                </div>
+                <div className="space-y-1">
+                  <div>
+                    <button
+                      onClick={() => handleVoiceChannelToggle('Lounge')}
+                      className={`w-full group flex items-center justify-between px-2.5 py-1.5 rounded-md text-sm font-medium transition-all duration-150 ${
+                        connectedVoiceChannel === 'Lounge' ? 'bg-[#23253a] text-[#45d6b8]' : 'hover:bg-[#1f212e] text-[#9294ab] hover:text-[#eef0f8]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 truncate">
+                        <span>🔊</span>
+                        <span className="truncate">Lounge</span>
+                      </div>
+                      <span className="font-mono text-[11px] text-[#585a70]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                        {connectedVoiceChannel === 'Lounge' ? '3' : '2'}
+                      </span>
+                    </button>
+                    <div className="pl-6 pr-2 mt-1 space-y-1">
+                      <div onClick={() => setSelectedProfileUser('mira')} className="flex items-center gap-2 py-1 px-1.5 rounded hover:bg-[#23253a]/60 cursor-pointer transition-colors">
+                        <UserAvatar username="mira" size={22} isSpeaking={isSpeakingMira} showStatus={false} />
+                        <span className="text-xs font-medium text-[#eef0f8] truncate">mira</span>
+                        {isSpeakingMira && <span className="text-[#45d6b8] text-[10px] ml-auto animate-pulse">● LIVE</span>}
+                      </div>
+                      <div onClick={() => setSelectedProfileUser('dez')} className="flex items-center gap-2 py-1 px-1.5 rounded hover:bg-[#23253a]/60 cursor-pointer transition-colors">
+                        <UserAvatar username="dez" size={22} isSpeaking={false} showStatus={false} />
+                        <span className="text-xs font-medium text-[#9294ab] truncate">dez</span>
+                      </div>
+                      {connectedVoiceChannel === 'Lounge' && (
+                        <div onClick={() => setSelectedProfileUser('you')} className="flex items-center gap-2 py-1 px-1.5 rounded bg-[#23253a]/40 cursor-pointer transition-colors">
+                          <UserAvatar username="you" size={22} isSpeaking={false} showStatus={false} />
+                          <span className="text-xs font-medium text-[#f2a25c] truncate">you</span>
+                          {isMuted && <span className="text-[#f2705c] text-xs ml-auto">🚫</span>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <button
+                      onClick={() => handleVoiceChannelToggle('Focus Room')}
+                      className={`w-full group flex items-center justify-between px-2.5 py-1.5 rounded-md text-sm font-medium transition-all duration-150 ${
+                        connectedVoiceChannel === 'Focus Room' ? 'bg-[#23253a] text-[#45d6b8]' : 'hover:bg-[#1f212e] text-[#9294ab] hover:text-[#eef0f8]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 truncate">
+                        <span>🔊</span>
+                        <span className="truncate">Focus Room</span>
+                      </div>
+                      <span className="font-mono text-[11px] text-[#585a70]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                        {connectedVoiceChannel === 'Focus Room' ? '1' : '0'}
+                      </span>
+                    </button>
+                    {connectedVoiceChannel === 'Focus Room' && (
+                      <div className="pl-6 pr-2 mt-1 space-y-1">
+                        <div onClick={() => setSelectedProfileUser('you')} className="flex items-center gap-2 py-1 px-1.5 rounded bg-[#23253a]/40 cursor-pointer transition-colors">
+                          <UserAvatar username="you" size={22} isSpeaking={false} showStatus={false} />
+                          <span className="text-xs font-medium text-[#f2a25c] truncate">you</span>
+                          {isMuted && <span className="text-[#f2705c] text-xs ml-auto">🚫</span>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Voice Connected Dock */}
+            {connectedVoiceChannel && (
+              <div className="mx-2 mb-2 p-2.5 rounded-xl border flex items-center justify-between shadow-lg transition-all animate-msg-enter" style={{ background: 'linear-gradient(135deg, rgba(69, 214, 184, 0.12) 0%, rgba(25, 27, 36, 0.95) 100%)', borderColor: 'rgba(69, 214, 184, 0.28)' }}>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full flex-shrink-0 signal-dot-anim" style={{ backgroundColor: TOKENS.signal }} />
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-space font-medium text-xs truncate leading-tight" style={{ fontFamily: "'Space Grotesk', sans-serif", color: TOKENS.signal }}>
+                      Voice connected
+                    </span>
+                    <span className="font-mono text-[10px] text-[#9294ab] truncate" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                      {connectedVoiceChannel} / 24ms
+                    </span>
+                  </div>
+                </div>
+                <button aria-label="Leave voice channel" onClick={() => handleVoiceChannelToggle(connectedVoiceChannel)} className="p-1.5 rounded-lg text-[#9294ab] hover:text-[#f2705c] hover:bg-[#f2705c]/10 transition-colors flex-shrink-0" title="Disconnect">
+                  📞✕
+                </button>
+              </div>
+            )}
+
+            {/* User Dock (60px) */}
+            <footer className="h-[60px] px-3 flex items-center justify-between border-t flex-shrink-0" style={{ backgroundColor: TOKENS.bgDock, borderColor: TOKENS.line }}>
+              <div className="flex items-center gap-2 min-w-0 cursor-pointer p-1 -ml-1 rounded-md hover:bg-[#23253a]/60 transition-colors" onClick={() => setSelectedProfileUser('you')} title="View your profile">
+                <UserAvatar username="you" size={32} status="online" />
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-semibold text-[#eef0f8] leading-tight truncate">you</span>
+                  <span className="font-mono text-[10.5px] leading-none mt-0.5" style={{ fontFamily: "'JetBrains Mono', monospace", color: TOKENS.textLow }}>
+                    #4471
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-0.5 text-[#9294ab]">
+                <button aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'} onClick={() => { setIsMuted(prev => !prev); triggerToast(!isMuted ? 'Microphone muted' : 'Microphone unmuted'); }} className={`p-1.5 rounded-md text-xs transition-colors ${isMuted ? 'text-[#f2705c] bg-[#f2705c]/15' : 'hover:text-[#eef0f8] hover:bg-[#23253a]'}`} title={isMuted ? 'Unmute' : 'Mute'}>
+                  {isMuted ? '🎤✕' : '🎤'}
+                </button>
+                <button aria-label={isDeafened ? 'Undeafen audio' : 'Deafen audio'} onClick={() => { setIsDeafened(prev => !prev); triggerToast(!isDeafened ? 'Audio deafened' : 'Audio restored'); }} className={`p-1.5 rounded-md text-xs transition-colors ${isDeafened ? 'text-[#f2705c] bg-[#f2705c]/15' : 'hover:text-[#eef0f8] hover:bg-[#23253a]'}`} title={isDeafened ? 'Undeafen' : 'Deafen'}>
+                  🎧
+                </button>
+                <button aria-label="User Settings" onClick={() => triggerToast('Orbit Preferences · v1.0.0')} className="p-1.5 rounded-md text-xs hover:text-[#eef0f8] hover:bg-[#23253a] transition-colors" title="User Settings">
+                  ⚙️
+                </button>
+              </div>
+            </footer>
+          </aside>
+
+          {/* 2. CHAT AREA */}
+          <main className="flex-1 flex flex-col h-full min-w-0 relative overflow-hidden" style={{ backgroundColor: TOKENS.bgChat }}>
+            {/* Header (64px) */}
+            <header className="h-16 px-5 flex items-center justify-between border-b flex-shrink-0 z-10" style={{ borderColor: TOKENS.line, backgroundColor: TOKENS.bgChat }}>
+              <div className="flex items-center gap-2.5 min-w-0 mr-4">
+                <span className="text-[#585a70] text-lg font-bold">#</span>
+                <h2 className="font-bold text-[15px] text-[#eef0f8] tracking-tight flex-shrink-0">
+                  {activeChannel.name}
+                </h2>
+                <div className="w-[1px] h-4 mx-1.5 flex-shrink-0" style={{ backgroundColor: TOKENS.line }} />
+                <p className="text-xs truncate font-normal hidden sm:block" style={{ color: TOKENS.textMid }}>
+                  {activeChannel.topic}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="relative hidden md:flex items-center">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search"
+                    className="w-36 lg:w-44 h-8 pl-6 pr-3 text-xs rounded-md bg-[#23253a] border border-transparent focus:border-[#7c6ff2] focus:outline-none text-[#eef0f8] placeholder-[#585a70]"
+                  />
+                  <span className="absolute left-2 text-[#585a70] text-xs">🔍</span>
+                </div>
+                <button aria-label="Pinned messages" onClick={() => setShowPinnedDrawer(prev => !prev)} className={`p-2 rounded-md text-xs transition-colors ${showPinnedDrawer ? 'text-[#eef0f8] bg-[#23253a]' : 'text-[#9294ab] hover:text-[#eef0f8]'}`} title="Pinned Messages">
+                  📌
+                </button>
+                <button aria-label="Toggle member list" onClick={() => setShowMemberSidebar(prev => !prev)} className={`p-2 rounded-md text-xs transition-colors ${showMemberSidebar ? 'text-[#7c6ff2] bg-[#7c6ff2]/15' : 'text-[#9294ab] hover:text-[#eef0f8]'}`} title="Toggle Member List">
+                  👥
+                </button>
+              </div>
+            </header>
+
+            {/* Pinned Messages Popover */}
+            {showPinnedDrawer && (
+              <div className="absolute top-16 right-5 w-80 max-h-96 bg-[#191b24] border border-[#232532] rounded-xl shadow-2xl p-4 z-40 overflow-y-auto animate-msg-enter">
+                <div className="flex items-center justify-between pb-3 border-b border-[#232532] mb-3">
+                  <span className="font-space font-semibold text-sm text-[#eef0f8]">Pinned Messages</span>
+                  <button onClick={() => setShowPinnedDrawer(false)} className="text-[#585a70] hover:text-[#eef0f8]">✕</button>
+                </div>
+                <div className="p-2.5 rounded-lg bg-[#23253a] border border-white/5 text-xs text-[#eef0f8]">
+                  <div className="flex items-center gap-2 mb-1">
+                    <UserAvatar username="mira" size={18} showStatus={false} />
+                    <span className="font-semibold text-[#d8b4fe]">mira</span>
+                    <span className="font-mono text-[10px] text-[#585a70]">Today at 7:38 PM</span>
+                  </div>
+                  pushed the new onboarding flow — someone want to eyeball it before I merge?
+                </div>
+              </div>
+            )}
+
+            {/* Messages Feed */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {/* Welcome banner */}
+              <div className="pt-6 pb-4">
+                <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3 shadow-inner" style={{ backgroundColor: TOKENS.bgRaised }}>
+                  <span className="text-2xl" style={{ color: TOKENS.brand }}>#</span>
+                </div>
+                <h3 className="font-space font-bold text-[22px] tracking-tight text-[#eef0f8]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>
+                  Welcome to #{activeChannel.name}!
+                </h3>
+                <p className="text-sm mt-1" style={{ color: TOKENS.textMid }}>
+                  This is the start of the #{activeChannel.name} channel. {activeChannel.topic}
+                </p>
+                <div className="w-full h-[1px] mt-5" style={{ backgroundColor: TOKENS.line }} />
+              </div>
+
+              {/* Message Items */}
+              <div className="space-y-1">
+                {activeMessages.map((msg, index) => {
+                  const prevMsg = index > 0 ? activeMessages[index - 1] : null;
+                  const isGrouped = prevMsg && prevMsg.author === msg.author;
+                  const authorConfig = USER_COLORS[msg.author] || USER_COLORS.you;
+
+                  return (
+                    <div key={msg.id} className={`group relative rounded-lg px-3 py-1 transition-colors duration-100 hover:bg-[#23253a]/40 ${isGrouped ? 'mt-0.5' : 'mt-3.5 pt-1.5'}`}>
+                      {!isGrouped ? (
+                        <div className="flex items-start gap-3.5">
+                          <div className="cursor-pointer flex-shrink-0 mt-0.5" onClick={() => setSelectedProfileUser(msg.author)}>
+                            <UserAvatar username={msg.author} size={38} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                              <span onClick={() => setSelectedProfileUser(msg.author)} className="font-semibold text-[14.5px] cursor-pointer hover:underline" style={{ color: authorConfig.nameColor }}>
+                                {msg.author}
+                              </span>
+                              {authorConfig.role === 'owner' && <span title="Server Owner" className="text-[#f2a25c] text-xs">👑</span>}
+                              {authorConfig.role === 'mod' && <span title="Moderator" className="text-[#45d6b8] text-xs">🛡️</span>}
+                              <span className="font-mono text-[11px] ml-1 tracking-tight" style={{ fontFamily: "'JetBrains Mono', monospace", color: TOKENS.textLow }}>
+                                {msg.timestamp}
+                              </span>
+                            </div>
+                            <p className="text-[14px] leading-relaxed text-[#eef0f8] select-text break-words">
+                              {msg.text}
+                            </p>
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-2">
+                                {msg.reactions.map((reaction, rIdx) => {
+                                  const hasReacted = reaction.users.includes('you');
+                                  return (
+                                    <button
+                                      key={rIdx}
+                                      onClick={() => handleToggleReaction(msg.id, reaction.emoji)}
+                                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs font-medium border transition-all duration-150 ${
+                                        hasReacted ? 'bg-[#7c6ff2]/20 border-[#7c6ff2] text-[#c9c3ff]' : 'bg-[#23253a] border-white/5 text-[#9294ab] hover:border-white/20 hover:text-[#eef0f8]'
+                                      }`}
+                                    >
+                                      <span>{reaction.emoji}</span>
+                                      <span className="font-mono text-[11px]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{reaction.count}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start pl-[50px] relative">
+                          <span className="absolute left-2 top-1 font-mono text-[9.5px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ fontFamily: "'JetBrains Mono', monospace", color: TOKENS.textLow }}>
+                            {msg.timestamp.split('at ')[1] || msg.timestamp}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[14px] leading-relaxed text-[#eef0f8] select-text break-words">{msg.text}</p>
+                            {msg.reactions && msg.reactions.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                {msg.reactions.map((reaction, rIdx) => {
+                                  const hasReacted = reaction.users.includes('you');
+                                  return (
+                                    <button
+                                      key={rIdx}
+                                      onClick={() => handleToggleReaction(msg.id, reaction.emoji)}
+                                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-xs font-medium border transition-all duration-150 ${
+                                        hasReacted ? 'bg-[#7c6ff2]/20 border-[#7c6ff2] text-[#c9c3ff]' : 'bg-[#23253a] border-white/5 text-[#9294ab] hover:border-white/20 hover:text-[#eef0f8]'
+                                      }`}
+                                    >
+                                      <span>{reaction.emoji}</span>
+                                      <span className="font-mono text-[11px]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{reaction.count}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {/* Hover quick reaction toolbar */}
+                      <div className="absolute -top-3 right-4 hidden group-hover:flex items-center gap-1 px-1.5 py-0.5 rounded-md border shadow-lg z-20" style={{ backgroundColor: TOKENS.bgRaised, borderColor: TOKENS.line }}>
+                        {['👀', '✅', '🎉', '🔥'].map((emoji) => (
+                          <button key={emoji} onClick={() => handleToggleReaction(msg.id, emoji)} className="p-1 hover:scale-125 transition-transform text-sm">
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+
+            {/* Typing Indicator */}
+            <div className="px-6 h-6 flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full typing-dot-1" style={{ backgroundColor: TOKENS.brand }} />
+                <span className="w-1.5 h-1.5 rounded-full typing-dot-2" style={{ backgroundColor: TOKENS.brand }} />
+                <span className="w-1.5 h-1.5 rounded-full typing-dot-3" style={{ backgroundColor: TOKENS.brand }} />
+              </div>
+              <span className="text-[11.5px] font-normal" style={{ color: TOKENS.textMid }}>
+                dez is typing…
+              </span>
+            </div>
+
+            {/* Composer */}
+            <div className="px-5 pb-5 pt-1 flex-shrink-0 relative">
+              {showEmojiPicker && (
+                <div className="absolute bottom-16 right-10 p-3 rounded-2xl border shadow-2xl z-50 animate-msg-enter" style={{ backgroundColor: TOKENS.bgRaised, borderColor: TOKENS.line }}>
+                  <div className="text-[11px] font-space font-semibold uppercase tracking-wider text-[#9294ab] mb-2 px-1">Quick Reactions</div>
+                  <div className="grid grid-cols-6 gap-2 text-xl">
+                    {['🚀', '✨', '🔥', '👀', '🎉', '✅', '💯', '❤️', '💡', '👾', '⚡', '☕'].map(emoji => (
+                      <button
+                        key={emoji}
+                        onClick={() => {
+                          setMessageInput(prev => prev + emoji);
+                          setShowEmojiPicker(false);
+                          inputRef.current?.focus();
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-white/10 hover:scale-125 transition-all text-center"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <form
+                onSubmit={handleSendMessage}
+                className="flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all duration-150 shadow-lg"
+                style={{ backgroundColor: TOKENS.bgRaised, borderColor: 'rgba(255, 255, 255, 0.05)' }}
+              >
+                <button type="button" aria-label="Upload file" onClick={() => triggerToast('File uploads simulated')} className="p-1 rounded-full text-[#9294ab] hover:text-[#eef0f8] hover:bg-white/5 transition-colors flex-shrink-0 text-sm">
+                  ➕
+                </button>
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  placeholder={`Message #${activeChannel.name}`}
+                  className="flex-1 bg-transparent border-none outline-none text-[14px] text-[#eef0f8] placeholder-[#585a70]"
+                />
+                <div className="flex items-center gap-1.5 flex-shrink-0 text-[#9294ab]">
+                  <button type="button" aria-label="Send gift" onClick={() => triggerToast('Gifting simulated')} className="p-1.5 rounded-lg text-sm hover:text-[#eef0f8]">
+                    🎁
+                  </button>
+                  <button type="button" aria-label="Send sticker" onClick={() => triggerToast('Sticker pack loaded')} className="p-1.5 rounded-lg text-sm hover:text-[#eef0f8]">
+                    🏷️
+                  </button>
+                  <button type="button" aria-label="Add emoji" onClick={() => setShowEmojiPicker(prev => !prev)} className={`p-1.5 rounded-lg text-sm transition-colors ${showEmojiPicker ? 'text-[#7c6ff2] bg-[#7c6ff2]/20' : 'hover:text-[#eef0f8]'}`}>
+                    😃
+                  </button>
+                  <button
+                    type="submit"
+                    aria-label="Send message"
+                    disabled={!messageInput.trim()}
+                    className={`p-2 rounded-xl transition-all duration-150 flex items-center justify-center text-xs ${
+                      messageInput.trim() ? 'scale-100 shadow-md text-white' : 'opacity-40 cursor-not-allowed'
+                    }`}
+                    style={{ backgroundColor: messageInput.trim() ? TOKENS.brand : 'transparent', color: messageInput.trim() ? '#ffffff' : TOKENS.textLow }}
+                  >
+                    ➤
+                  </button>
+                </div>
+              </form>
+            </div>
+          </main>
+
+          {/* 3. MEMBERS SIDEBAR (228px, Collapsible) */}
+          {showMemberSidebar && (
+            <aside className="w-[228px] flex-shrink-0 flex flex-col h-full border-l overflow-y-auto px-3 py-4 space-y-5 select-none animate-msg-enter" style={{ backgroundColor: TOKENS.bgPanel, borderColor: TOKENS.line }}>
+              <div>
+                <div className="font-space font-semibold text-[11px] tracking-wider uppercase mb-2 px-2" style={{ fontFamily: "'Space Grotesk', sans-serif", color: TOKENS.textLow }}>
+                  Online — {onlineMembers.length}
+                </div>
+                <div className="space-y-0.5">
+                  {onlineMembers.map(member => (
+                    <MemberRow key={member.username} member={member} onClick={() => setSelectedProfileUser(member.username)} />
+                  ))}
+                </div>
+              </div>
+
+              {idleMembers.length > 0 && (
+                <div>
+                  <div className="font-space font-semibold text-[11px] tracking-wider uppercase mb-2 px-2" style={{ fontFamily: "'Space Grotesk', sans-serif", color: TOKENS.textLow }}>
+                    Idle — {idleMembers.length}
+                  </div>
+                  <div className="space-y-0.5">
+                    {idleMembers.map(member => (
+                      <MemberRow key={member.username} member={member} onClick={() => setSelectedProfileUser(member.username)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {dndMembers.length > 0 && (
+                <div>
+                  <div className="font-space font-semibold text-[11px] tracking-wider uppercase mb-2 px-2" style={{ fontFamily: "'Space Grotesk', sans-serif", color: TOKENS.textLow }}>
+                    Do Not Disturb — {dndMembers.length}
+                  </div>
+                  <div className="space-y-0.5">
+                    {dndMembers.map(member => (
+                      <MemberRow key={member.username} member={member} onClick={() => setSelectedProfileUser(member.username)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {offlineMembers.length > 0 && (
+                <div>
+                  <div className="font-space font-semibold text-[11px] tracking-wider uppercase mb-2 px-2" style={{ fontFamily: "'Space Grotesk', sans-serif", color: TOKENS.textLow }}>
+                    Offline — {offlineMembers.length}
+                  </div>
+                  <div className="space-y-0.5 opacity-60">
+                    {offlineMembers.map(member => (
+                      <MemberRow key={member.username} member={member} onClick={() => setSelectedProfileUser(member.username)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </aside>
+          )}
+
+          {/* 4. PROFILE MODAL */}
+          {selectedProfileUser && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-msg-enter" onClick={() => setSelectedProfileUser(null)}>
+              <div className="w-80 rounded-2xl border shadow-2xl overflow-hidden" style={{ backgroundColor: TOKENS.bgPanel, borderColor: TOKENS.line }} onClick={e => e.stopPropagation()}>
+                <div className="h-20 w-full relative" style={{ background: `linear-gradient(135deg, ${USER_COLORS[selectedProfileUser]?.from || '#6366f1'} 0%, ${USER_COLORS[selectedProfileUser]?.to || '#a855f7'} 100%)` }}>
+                  <button aria-label="Close" onClick={() => setSelectedProfileUser(null)} className="absolute top-3 right-3 p-1.5 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors text-xs">
+                    ✕
+                  </button>
+                </div>
+                <div className="px-5 pb-5 relative">
+                  <div className="-mt-8 mb-3 flex items-end justify-between">
+                    <div className="ring-4 ring-[#191b24] rounded-full">
+                      <UserAvatar username={selectedProfileUser} size={64} status={USER_COLORS[selectedProfileUser]?.status} />
+                    </div>
+                    <div className="font-mono text-xs px-2.5 py-1 rounded-md border text-[#9294ab]" style={{ backgroundColor: TOKENS.bgRaised, borderColor: TOKENS.line, fontFamily: "'JetBrains Mono', monospace" }}>
+                      {USER_COLORS[selectedProfileUser]?.tag || '#0000'}
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-space font-bold text-lg text-[#eef0f8]">{selectedProfileUser}</h4>
+                      {USER_COLORS[selectedProfileUser]?.role === 'owner' && <span className="text-[#f2a25c]">👑</span>}
+                      {USER_COLORS[selectedProfileUser]?.role === 'mod' && <span className="text-[#45d6b8]">🛡️</span>}
+                    </div>
+                    <p className="text-xs text-[#9294ab] mt-0.5">{USER_COLORS[selectedProfileUser]?.roleLabel} · Orbit HQ</p>
+                  </div>
+                  <div className="p-3 rounded-xl border text-xs text-[#eef0f8] leading-relaxed mb-4" style={{ backgroundColor: TOKENS.bgRaised, borderColor: 'rgba(255, 255, 255, 0.04)' }}>
+                    <div className="font-space font-semibold uppercase text-[10px] text-[#585a70] tracking-wider mb-1">About Me</div>
+                    {USER_COLORS[selectedProfileUser]?.bio}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        triggerToast(`Mentioned @${selectedProfileUser}`);
+                        setMessageInput(prev => `@${selectedProfileUser} ` + prev);
+                        setSelectedProfileUser(null);
+                        inputRef.current?.focus();
+                      }}
+                      className="flex-1 py-2 rounded-xl text-xs font-semibold text-white flex items-center justify-center gap-1.5 shadow-md transition-transform hover:scale-[1.02]"
+                      style={{ backgroundColor: TOKENS.brand }}
+                    >
+                      @ Mention
+                    </button>
+                    <button
+                      onClick={() => triggerToast('Direct messaging is disabled in Orbit single-server mode')}
+                      className="py-2 px-3 rounded-xl text-xs font-semibold border text-[#9294ab] hover:text-[#eef0f8] transition-colors"
+                      style={{ backgroundColor: TOKENS.bgRaised, borderColor: TOKENS.line }}
+                    >
+                      💬
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function MemberRow({ member, onClick }) {
+      const userConfig = USER_COLORS[member.username] || USER_COLORS.you;
+      return (
+        <button onClick={onClick} className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-[#23253a] group text-left transition-colors duration-150">
+          <UserAvatar username={member.username} size={28} status={member.status} />
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+            <span className="text-xs font-medium truncate group-hover:text-white transition-colors" style={{ color: userConfig.nameColor }}>
+              {member.name}
+            </span>
+            {userConfig.role === 'owner' && <span className="text-[#f2a25c] text-[10px]">👑</span>}
+            {userConfig.role === 'mod' && <span className="text-[#45d6b8] text-[10px]">🛡️</span>}
+          </div>
+        </button>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        orbit: {
+          purple: '#B026FF',
+          violet: '#7000FF',
+          cyan: '#00D2FF',
+          blue: '#2563EB',
+          magenta: '#D946EF',
+          neon: '#00F0FF',
+          emerald: '#10B981',
+          amber: '#F59E0B',
+          rose: '#F43F5E',
+          'dark-bg': '#0D0E15',
+          'dark-rail': '#08090E',
+          'dark-sidebar': '#11121B',
+          'dark-chat': '#151722',
+          'dark-dock': '#0B0C12',
+          'dark-card': '#0E0F18',
+          'dark-input': '#1A1C28',
+          'dark-hover': '#212433',
+          'dark-active': '#2A2E40',
+          'text-normal': '#E2E8F0',
+          'text-muted': '#94A3B8',
+          'text-header': '#FFFFFF',
+          'border': '#1F2233',
+        },
+        discord: {
+          blurple: '#7000FF',
+          'blurple-hover': '#5E00D9',
+          green: '#00E599',
+          'green-hover': '#00B87A',
+          yellow: '#F59E0B',
+          red: '#F43F5E',
+          'red-hover': '#E11D48',
+          'dark-rail': '#08090E',
+          'dark-sidebar': '#11121B',
+          'dark-chat': '#151722',
+          'dark-dock': '#0B0C12',
+          'dark-card': '#0E0F18',
+          'dark-input': '#1A1C28',
+          'dark-hover': '#212433',
+          'dark-active': '#2A2E40',
+          'text-normal': '#E2E8F0',
+          'text-muted': '#94A3B8',
+          'text-header': '#FFFFFF',
+          'text-interactive': '#CBD5E1',
+        },
+      },
+      fontFamily: {
+        'sans': ['"Space Grotesk"', '"Inter"', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+      }
+    },
+  },
+  plugins: [],
+}
